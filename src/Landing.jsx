@@ -2,29 +2,21 @@ import { useState, useEffect } from 'react';
 import './Landing.css';
 
 export default function Landing({ onStart }) {
-  const [visibleElements, setVisibleElements] = useState(new Set());
-
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
-            setVisibleElements((prev) => new Set(prev).add(entry.target.id));
+            entry.target.classList.add('visible');
           }
         });
       },
       { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
     );
 
-    document.querySelectorAll('.reveal').forEach((el) => {
-      el.id = el.id || `reveal-${Math.random()}`;
-      observer.observe(el);
-    });
-
+    document.querySelectorAll('.reveal').forEach((el) => observer.observe(el));
     return () => observer.disconnect();
   }, []);
-
-  const isVisible = (id) => visibleElements.has(id);
 
   return (
     <div className="landing">
