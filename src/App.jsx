@@ -75,10 +75,10 @@ export default function NoteApp({onHome}) {
   /* Eraser cursor */
   useEffect(()=>{const hm=(e)=>{const el=eraserCursorRef.current;if(el){el.style.left=e.clientX+"px";el.style.top=e.clientY+"px";}};if(tool===T.ERASER){window.addEventListener("pointermove",hm);return()=>window.removeEventListener("pointermove",hm);}},[tool]);
 
-  /* iPad: block single-finger touch when pen is active (palm rejection), allow multi-touch for scroll/zoom */
+  /* iPad: block obvious palm touches (large contact area) when pen is active */
   useEffect(()=>{
     if(!penActive)return;
-    const block=(e)=>{if(e.touches&&e.touches.length===1){e.preventDefault();e.stopPropagation();}};
+    const block=(e)=>{if(e.touches&&e.touches.length===1){const t=e.touches[0];if((t.radiusX||0)>15||(t.radiusY||0)>15){e.preventDefault();e.stopPropagation();}}};
     document.addEventListener("touchstart",block,{passive:false,capture:true});
     document.addEventListener("touchmove",block,{passive:false,capture:true});
     return()=>{document.removeEventListener("touchstart",block,{capture:true});document.removeEventListener("touchmove",block,{capture:true});};
@@ -130,7 +130,10 @@ export default function NoteApp({onHome}) {
   },[currentPage,pages,textInputs]);
 
   /* ═══ POINTER HANDLERS ═══ */
-  const handleDown=(e)=>{e.preventDefault();if(pinchRef.current)return;if(isPalm(e))return;rectCache.current=null;
+  const handleDown=(e)=>{e.preventDefault();if(pinchRef.current)return;
+    /* Pen detected: finger touch = scroll, reject palms & overlapping finger during draw */
+    if(e.pointerType==="touch"&&penDet.current){if(e.width>20||e.height>20)return;if(e.pressure>0&&e.pressure<0.05)return;if(isDrawing.current)return;isPanning.current=true;panStart.current={x:e.clientX,y:e.clientY};return;}
+    if(isPalm(e))return;rectCache.current=null;
     if(shouldPan()){isPanning.current=true;panStart.current={x:e.clientX,y:e.clientY};return;}
     const pi=getPageAtPt(e);if(pi===-1)return;
     if(pi!==currentPage)activatePage(pi);
@@ -145,8 +148,8 @@ export default function NoteApp({onHome}) {
     if(tool===T.ERASER){const ctx=c.getContext("2d");ctx.save();ctx.fillStyle="#ffffff";ctx.beginPath();ctx.arc(pos.x,pos.y,eraserSize,0,Math.PI*2);ctx.fill();ctx.restore();}
   };
 
-  const handleMove=(e)=>{e.preventDefault();if(pinchRef.current)return;if(e.pointerType==="touch"&&penDet.current)return;if(!isDrawing.current&&!isPanning.current&&isPalm(e))return;
-    if(isPanning.current&&shouldPan()){const el=scrollRef.current;el.scrollLeft-=(e.clientX-panStart.current.x);el.scrollTop-=(e.clientY-panStart.current.y);panStart.current={x:e.clientX,y:e.clientY};return;}
+  const handleMove=(e)=>{e.preventDefault();if(pinchRef.current)return;if(!isDrawing.current&&!isPanning.current&&isPalm(e))return;
+    if(isPanning.current){const el=scrollRef.current;el.scrollLeft-=(e.clientX-panStart.current.x);el.scrollTop-=(e.clientY-panStart.current.y);panStart.current={x:e.clientX,y:e.clientY};return;}
     const pos=getPos(e);
     /* Auto-create page near bottom of last page — debounced */
     if(isDrawing.current&&currentPage===pages.length-1&&pos.y>PH-AUTO_ZONE&&![T.SELECT,T.HAND].includes(tool)&&!autoPageFlag.current){
