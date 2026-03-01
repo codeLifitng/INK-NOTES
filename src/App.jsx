@@ -18,7 +18,6 @@ const BRUSH_SIZES=[1,2,4,6,10,16,24],ERASER_SIZES=[8,16,24,36,48,64],FONT_SIZES=
 const invertHex=(hex)=>{if(!hex||hex[0]!=="#")return hex;const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return`#${(255-r).toString(16).padStart(2,"0")}${(255-g).toString(16).padStart(2,"0")}${(255-b).toString(16).padStart(2,"0")}`;};
 const T={PEN:"pen",HIGHLIGHTER:"highlighter",ERASER:"eraser",TEXT:"text",SELECT:"select",LINE:"line",ARROW:"arrow",RECT:"rect",DIAMOND:"diamond",CIRCLE:"circle",HAND:"hand"};
 const INACTIVITY_TIMEOUT=1800000;
-/* Page canvas: fixed internal resolution, displayed at responsive width */
 const PW=2000,PH=2600,PAGE_PAD=32,PAGE_GAP=40,AUTO_ZONE=300;
 
 /* ══════════════ Icons ══════════════ */
@@ -56,20 +55,19 @@ const I={
 
 /* ══════════════ App ══════════════ */
 export default function NoteApp({onHome}) {
-  /* ═══ Multi-canvas refs ═══ */
-  const cMap=useRef(new Map()),oMap=useRef(new Map()); /* pageId → canvas/overlay */
-  const canvasRef=useRef(null),overlayRef=useRef(null); /* → active page */
+  const cMap=useRef(new Map()),oMap=useRef(new Map());
+  const canvasRef=useRef(null),overlayRef=useRef(null);
   const scrollRef=useRef(null),eraserCursorRef=useRef(null);
 
-  /* ═══ State ═══ */
-  const [dark,setDark]=useState(false),[isDrawing,setIsDrawing]=useState(false),[tool,setTool]=useState(T.PEN);
+  /* ═══ State — only things that MUST trigger re-render ═══ */
+  const [dark,setDark]=useState(false);
+  const [tool,setTool]=useState(T.PEN);
   const [color,setColor]=useState(COLORS[0]),[brushSize,setBrushSize]=useState(4),[eraserSize,setEraserSize]=useState(24),[fontSize,setFontSize]=useState(24);
   const [history,setHistory]=useState([]),[historyIndex,setHistoryIndex]=useState(-1);
-  const [pages,setPages]=useState([{id:1,name:"Page 1"}]),[currentPage,setCurrentPage]=useState(0),[pageData,setPageData]=useState({});
+  const [pages,setPages]=useState([{id:1,name:"Page 1"}]),[currentPage,setCurrentPage]=useState(0);
   const [showGrid,setShowGrid]=useState(false),[showRuled,setShowRuled]=useState(false);
   const [textInputs,setTextInputs]=useState([]),[editingText,setEditingText]=useState(null);
-  const [shapeStart,setShapeStart]=useState(null),[sidebarOpen,setSidebarOpen]=useState(false);
-  const pressureRef=useRef(1);
+  const [sidebarOpen,setSidebarOpen]=useState(false);
   const [saveStatus,setSaveStatus]=useState("idle"),[showUploadModal,setShowUploadModal]=useState(false);
   const [showEmailModal,setShowEmailModal]=useState(false),[emailTo,setEmailTo]=useState(""),[emailSubject,setEmailSubject]=useState("");
   const [emailSending,setEmailSending]=useState(false),[emailPreview,setEmailPreview]=useState(""),[appReady,setAppReady]=useState(false);
@@ -78,22 +76,35 @@ export default function NoteApp({onHome}) {
   const selSnap=useRef(null);
   const [zoom,setZoom]=useState(1),[baseW,setBaseW]=useState(800),[hoveredTool,setHoveredTool]=useState(null);
   const [winW,setWinW]=useState(typeof window!=="undefined"?window.innerWidth:1200);
-  const [penActive,setPenActive]=useState(false); /* controls touchAction for iPad palm rejection */
+  const [penActive,setPenActive]=useState(false);
 
+  /* ═══ Refs — perf-critical, must NOT trigger re-render ═══ */
+  const isDrawing=useRef(false);      /* FIX: was useState → re-rendered every stroke */
+  const shapeStart=useRef(null);       /* FIX: was useState → re-rendered on shape draw */
+  const pressureRef=useRef(1);
   const isPanning=useRef(false),panStart=useRef({x:0,y:0}),spaceHeld=useRef(false);
   const lastPoint=useRef(null),pathPts=useRef([]),inactTimer=useRef(null),lastBackup=useRef(null);
   const fileRef=useRef(null),renameRef=useRef(null),penDet=useRef(false),penTO=useRef(null);
-  const autoPageFlag=useRef(false); /* debounce auto-page creation */
-  const pdRef=useRef(pageData),pgRef=useRef(pages),cpRef=useRef(currentPage),tiRef=useRef(textInputs);
-  const sgRef=useRef(showGrid),srRef=useRef(showRuled),zoomRef=useRef(1);
+  const autoPageFlag=useRef(false);
+  const rectCache=useRef(null),rectFrame=useRef(0);
+  const zoomRef=useRef(1);
+  /* FIX: pageData keyed by PAGE ID, not index */
+  const pdRef=useRef({});
+  const pgRef=useRef(pages),cpRef=useRef(currentPage),tiRef=useRef(textInputs);
+  const sgRef=useRef(showGrid),srRef=useRef(showRuled),darkRef=useRef(dark);
+  const toolRef=useRef(tool),colorRef=useRef(color),brushRef=useRef(brushSize),eraserRef=useRef(eraserSize);
 
-  useEffect(()=>{pdRef.current=pageData},[pageData]);
   useEffect(()=>{pgRef.current=pages},[pages]);
   useEffect(()=>{cpRef.current=currentPage},[currentPage]);
   useEffect(()=>{tiRef.current=textInputs},[textInputs]);
   useEffect(()=>{sgRef.current=showGrid},[showGrid]);
   useEffect(()=>{srRef.current=showRuled},[showRuled]);
   useEffect(()=>{zoomRef.current=zoom},[zoom]);
+  useEffect(()=>{darkRef.current=dark},[dark]);
+  useEffect(()=>{toolRef.current=tool},[tool]);
+  useEffect(()=>{colorRef.current=color},[color]);
+  useEffect(()=>{brushRef.current=brushSize},[brushSize]);
+  useEffect(()=>{eraserRef.current=eraserSize},[eraserSize]);
 
   /* Responsive width */
   useEffect(()=>{
@@ -103,8 +114,7 @@ export default function NoteApp({onHome}) {
   useEffect(()=>{const el=scrollRef.current;if(el)setBaseW(Math.min(el.clientWidth-PAGE_PAD*2,1400));},[sidebarOpen]);
   const compact=winW<768,tiny=winW<500;
   const th=dark?themes.dark:themes.light;
-  const dW=baseW*zoom,dH=baseW*PH/PW*zoom; /* display page dimensions */
-  const s2c=useCallback((rect)=>({sx:PW/rect.width,sy:PH/rect.height}),[]);
+  const dW=baseW*zoom,dH=baseW*PH/PW*zoom;
 
   /* Sync active canvas refs */
   useEffect(()=>{const pid=pages[currentPage]?.id;if(pid){canvasRef.current=cMap.current.get(pid);overlayRef.current=oMap.current.get(pid);}},[currentPage,pages]);
@@ -112,29 +122,23 @@ export default function NoteApp({onHome}) {
   /* Eraser cursor */
   useEffect(()=>{const hm=(e)=>{const el=eraserCursorRef.current;if(el){el.style.left=e.clientX+"px";el.style.top=e.clientY+"px";}};if(tool===T.ERASER){window.addEventListener("pointermove",hm);return()=>window.removeEventListener("pointermove",hm);}},[tool]);
 
-  /* iPad: block native touch when pen is active — prevents palm scroll/select */
+  /* iPad: block native touch when pen is active */
   useEffect(()=>{
     if(!penActive)return;
-    const block=(e)=>{
-      /* Only block touch events, let pen through */
-      if(e.touches&&e.touches.length>0){
-        const t=e.touches[0];
-        /* Allow if it's clearly intentional single-finger (no pen recently) — but penActive means pen WAS recent */
-        e.preventDefault();e.stopPropagation();
-      }
-    };
+    const block=(e)=>{if(e.touches&&e.touches.length>0){e.preventDefault();e.stopPropagation();}};
     document.addEventListener("touchstart",block,{passive:false,capture:true});
     document.addEventListener("touchmove",block,{passive:false,capture:true});
     return()=>{document.removeEventListener("touchstart",block,{capture:true});document.removeEventListener("touchmove",block,{capture:true});};
   },[penActive]);
 
-  /* ═══ Canvas init via callback refs ═══ */
+  /* ═══ Canvas init — FIX: looks up saved data by page ID directly ═══ */
   const initC=useCallback((el,pid)=>{
     if(!el||cMap.current.get(pid)===el)return;cMap.current.set(pid,el);
     const dpr=Math.min(window.devicePixelRatio||1,2);el.width=PW*dpr;el.height=PH*dpr;
     const ctx=el.getContext("2d");ctx.scale(dpr,dpr);ctx.fillStyle="#ffffff";ctx.fillRect(0,0,PW,PH);
-    const idx=pgRef.current.findIndex(p=>p.id===pid);const saved=pdRef.current[idx];
-    if(saved?.image){const img=new Image();img.onload=()=>ctx.drawImage(img,0,0,PW,PH);img.src=saved.image;}
+    /* FIX: lookup by page ID — no pgRef dependency, no race condition */
+    const saved=pdRef.current[pid];
+    if(saved?.image){const img=new Image();img.onload=()=>{ctx.drawImage(img,0,0,PW,PH);};img.src=saved.image;}
   },[]);
   const initO=useCallback((el,pid)=>{
     if(!el||oMap.current.get(pid)===el)return;oMap.current.set(pid,el);
@@ -143,7 +147,6 @@ export default function NoteApp({onHome}) {
 
   /* ═══ Coordinates ═══ */
   const getPageAtPt=(e)=>{for(let i=0;i<pages.length;i++){const c=cMap.current.get(pages[i].id);if(!c)continue;const r=c.getBoundingClientRect();if(e.clientY>=r.top&&e.clientY<=r.bottom&&e.clientX>=r.left&&e.clientX<=r.right)return i;}return-1;};
-  const rectCache=useRef(null),rectFrame=useRef(0);
   const getPos=(e)=>{const c=canvasRef.current;if(!c)return{x:0,y:0,pressure:.5};const now=performance.now();if(!rectCache.current||now-rectFrame.current>100){rectCache.current=c.getBoundingClientRect();rectFrame.current=now;}const r=rectCache.current;const t=e.touches?e.touches[0]:e;return{x:(t.clientX-r.left)/r.width*PW,y:(t.clientY-r.top)/r.height*PH,pressure:e.pressure??.5};};
   const isPalm=(e)=>{if(e.pointerType==="pen"){penDet.current=true;setPenActive(true);if(penTO.current)clearTimeout(penTO.current);penTO.current=setTimeout(()=>{penDet.current=false;setPenActive(false);},2500);return false;}if(e.pointerType==="touch"&&penDet.current)return true;if(e.pointerType==="touch"&&(e.width>20||e.height>20))return true;if(e.pointerType==="touch"&&e.pressure>0&&e.pressure<0.05)return true;return false;};
   const shouldPan=()=>tool===T.HAND||spaceHeld.current;
@@ -168,14 +171,15 @@ export default function NoteApp({onHome}) {
   const commitText=(inp)=>{if(!inp.text.trim())return;const ctx=canvasRef.current.getContext("2d");ctx.save();ctx.font=`${inp.fontSize}px "Literata",Georgia,serif`;ctx.fillStyle=inp.color;ctx.textBaseline="top";inp.text.split("\n").forEach((l,i)=>ctx.fillText(l,inp.x,inp.y+i*inp.fontSize*1.3));ctx.restore();saveHist();};
   const textBlur=(id)=>{const inp=textInputs.find(t=>t.id===id);if(inp){commitText(inp);setTextInputs(p=>p.filter(t=>t.id!==id));}setEditingText(null);};
 
-  /* ═══ Switch active page ═══ */
+  /* ═══ Switch active page — FIX: save by page ID ═══ */
   const activatePage=useCallback((idx)=>{
     if(idx===currentPage||idx<0||idx>=pages.length)return;
-    /* Save current page data */
-    const c=canvasRef.current;if(c)setPageData(p=>({...p,[currentPage]:{image:c.toDataURL(),texts:textInputs}}));
+    const curPid=pages[currentPage]?.id;
+    const c=canvasRef.current;
+    if(c&&curPid){pdRef.current[curPid]={image:c.toDataURL(),texts:textInputs};}
     setCurrentPage(idx);
     const pid=pages[idx].id;canvasRef.current=cMap.current.get(pid);overlayRef.current=oMap.current.get(pid);
-    setTextInputs(pdRef.current[idx]?.texts||[]);setHistory([]);setHistoryIndex(-1);setSelection(null);selSnap.current=null;
+    setTextInputs(pdRef.current[pid]?.texts||[]);setHistory([]);setHistoryIndex(-1);setSelection(null);selSnap.current=null;
   },[currentPage,pages,textInputs]);
 
   /* ═══ POINTER HANDLERS ═══ */
@@ -183,37 +187,34 @@ export default function NoteApp({onHome}) {
     if(shouldPan()){isPanning.current=true;panStart.current={x:e.clientX,y:e.clientY};return;}
     const pi=getPageAtPt(e);if(pi===-1)return;
     if(pi!==currentPage)activatePage(pi);
-    /* Small delay for ref update */
     const c=cMap.current.get(pages[pi].id);const o=oMap.current.get(pages[pi].id);
     canvasRef.current=c;overlayRef.current=o;
     const pos=getPos(e);pressureRef.current=pos.pressure||.5;
-    if(tool===T.SELECT){if(selection&&inSel(pos)){setIsDraggingSel(true);lastPoint.current=pos;return;}if(selection)commitSel();setSelStart(pos);setIsDrawing(true);return;}
+    if(tool===T.SELECT){if(selection&&inSel(pos)){setIsDraggingSel(true);lastPoint.current=pos;return;}if(selection)commitSel();setSelStart(pos);isDrawing.current=true;return;}
     if(selection)commitSel();
     if(tool===T.TEXT){setTextInputs(p=>[...p,{id:Date.now(),x:pos.x,y:pos.y,text:"",color,fontSize}]);setEditingText(Date.now());return;}
-    if([T.LINE,T.ARROW,T.RECT,T.DIAMOND,T.CIRCLE].includes(tool)){setShapeStart(pos);setIsDrawing(true);return;}
-    setIsDrawing(true);lastPoint.current=pos;pathPts.current=[pos];
+    if([T.LINE,T.ARROW,T.RECT,T.DIAMOND,T.CIRCLE].includes(tool)){shapeStart.current=pos;isDrawing.current=true;return;}
+    isDrawing.current=true;lastPoint.current=pos;pathPts.current=[pos];
     if(tool===T.ERASER){const ctx=c.getContext("2d");ctx.save();ctx.fillStyle="#ffffff";ctx.beginPath();ctx.arc(pos.x,pos.y,eraserSize,0,Math.PI*2);ctx.fill();ctx.restore();}
   };
 
   const handleMove=(e)=>{e.preventDefault();if(isPalm(e))return;
     if(isPanning.current&&shouldPan()){const el=scrollRef.current;el.scrollLeft-=(e.clientX-panStart.current.x);el.scrollTop-=(e.clientY-panStart.current.y);panStart.current={x:e.clientX,y:e.clientY};return;}
     const pos=getPos(e);
-    /* Auto-create page when near bottom of last page — debounced */
-    if(isDrawing&&currentPage===pages.length-1&&pos.y>PH-AUTO_ZONE&&![T.SELECT,T.HAND].includes(tool)&&!autoPageFlag.current){
+    /* Auto-create page near bottom of last page — debounced */
+    if(isDrawing.current&&currentPage===pages.length-1&&pos.y>PH-AUTO_ZONE&&![T.SELECT,T.HAND].includes(tool)&&!autoPageFlag.current){
       autoPageFlag.current=true;
       setPages(p=>[...p,{id:Date.now(),name:`Page ${p.length+1}`}]);
       setTimeout(()=>scrollRef.current?.scrollBy({top:200,behavior:"smooth"}),150);
     }
     if(tool===T.SELECT&&isDraggingSel&&selection){const dx=pos.x-lastPoint.current.x,dy=pos.y-lastPoint.current.y;setSelection(p=>({...p,x:p.x+dx,y:p.y+dy}));if(selSnap.current){const c=canvasRef.current,ctx=c.getContext("2d");const img=new Image();img.onload=()=>{ctx.clearRect(0,0,PW,PH);ctx.drawImage(img,0,0,PW,PH);const tc=document.createElement("canvas");tc.width=selection.imageData.width;tc.height=selection.imageData.height;tc.getContext("2d").putImageData(selection.imageData,0,0);ctx.drawImage(tc,selection.x+dx,selection.y+dy,selection.w,selection.h);};img.src=selSnap.current;}lastPoint.current=pos;const o=overlayRef.current,octx=o.getContext("2d");octx.clearRect(0,0,PW,PH);octx.save();octx.setLineDash([6,4]);octx.strokeStyle=th.accent;octx.lineWidth=2;octx.strokeRect(selection.x+dx,selection.y+dy,selection.w,selection.h);octx.restore();return;}
-    if(tool===T.SELECT&&isDrawing&&selStart){const o=overlayRef.current,octx=o.getContext("2d");octx.clearRect(0,0,PW,PH);octx.save();octx.setLineDash([6,4]);octx.strokeStyle=th.accent;octx.lineWidth=2;octx.fillStyle="rgba(192,104,48,0.06)";const x=Math.min(selStart.x,pos.x),y=Math.min(selStart.y,pos.y),w=Math.abs(pos.x-selStart.x),h=Math.abs(pos.y-selStart.y);octx.fillRect(x,y,w,h);octx.strokeRect(x,y,w,h);octx.restore();return;}
-    if(!isDrawing)return;const pv=pos.pressure||pressureRef.current;pressureRef.current=pv;
-    if([T.LINE,T.ARROW,T.RECT,T.DIAMOND,T.CIRCLE].includes(tool)&&shapeStart){const o=overlayRef.current,octx=o.getContext("2d");octx.clearRect(0,0,PW,PH);octx.save();if(tool===T.LINE){octx.strokeStyle=color;octx.lineWidth=brushSize;octx.lineCap="round";octx.beginPath();octx.moveTo(shapeStart.x,shapeStart.y);octx.lineTo(pos.x,pos.y);octx.stroke();}else if(tool===T.ARROW)drawArrow(octx,shapeStart.x,shapeStart.y,pos.x,pos.y,color,brushSize);else if(tool===T.RECT){octx.strokeStyle=color;octx.lineWidth=brushSize;octx.lineCap="round";octx.strokeRect(shapeStart.x,shapeStart.y,pos.x-shapeStart.x,pos.y-shapeStart.y);}else if(tool===T.DIAMOND)drawDiamond(octx,shapeStart.x,shapeStart.y,pos.x-shapeStart.x,pos.y-shapeStart.y,color,brushSize);else if(tool===T.CIRCLE){const rx=Math.abs(pos.x-shapeStart.x)/2,ry=Math.abs(pos.y-shapeStart.y)/2;octx.strokeStyle=color;octx.lineWidth=brushSize;octx.lineCap="round";octx.beginPath();octx.ellipse(shapeStart.x+(pos.x-shapeStart.x)/2,shapeStart.y+(pos.y-shapeStart.y)/2,rx,ry,0,0,Math.PI*2);octx.stroke();}octx.restore();return;}
+    if(tool===T.SELECT&&isDrawing.current&&selStart){const o=overlayRef.current,octx=o.getContext("2d");octx.clearRect(0,0,PW,PH);octx.save();octx.setLineDash([6,4]);octx.strokeStyle=th.accent;octx.lineWidth=2;octx.fillStyle="rgba(192,104,48,0.06)";const x=Math.min(selStart.x,pos.x),y=Math.min(selStart.y,pos.y),w=Math.abs(pos.x-selStart.x),h=Math.abs(pos.y-selStart.y);octx.fillRect(x,y,w,h);octx.strokeRect(x,y,w,h);octx.restore();return;}
+    if(!isDrawing.current)return;const pv=pos.pressure||pressureRef.current;pressureRef.current=pv;
+    if([T.LINE,T.ARROW,T.RECT,T.DIAMOND,T.CIRCLE].includes(tool)&&shapeStart.current){const o=overlayRef.current,octx=o.getContext("2d");octx.clearRect(0,0,PW,PH);octx.save();const ss=shapeStart.current;if(tool===T.LINE){octx.strokeStyle=color;octx.lineWidth=brushSize;octx.lineCap="round";octx.beginPath();octx.moveTo(ss.x,ss.y);octx.lineTo(pos.x,pos.y);octx.stroke();}else if(tool===T.ARROW)drawArrow(octx,ss.x,ss.y,pos.x,pos.y,color,brushSize);else if(tool===T.RECT){octx.strokeStyle=color;octx.lineWidth=brushSize;octx.lineCap="round";octx.strokeRect(ss.x,ss.y,pos.x-ss.x,pos.y-ss.y);}else if(tool===T.DIAMOND)drawDiamond(octx,ss.x,ss.y,pos.x-ss.x,pos.y-ss.y,color,brushSize);else if(tool===T.CIRCLE){const rx=Math.abs(pos.x-ss.x)/2,ry=Math.abs(pos.y-ss.y)/2;octx.strokeStyle=color;octx.lineWidth=brushSize;octx.lineCap="round";octx.beginPath();octx.ellipse(ss.x+(pos.x-ss.x)/2,ss.y+(pos.y-ss.y)/2,rx,ry,0,0,Math.PI*2);octx.stroke();}octx.restore();return;}
     if(tool===T.ERASER){const ctx=canvasRef.current.getContext("2d");ctx.save();ctx.fillStyle="#ffffff";
-      /* Use coalesced events for smoother erasing on iPad */
       const evts=e.getCoalescedEvents?e.getCoalescedEvents():[];const pts=evts.length>1?evts.map(ce=>{const t=ce.touches?ce.touches[0]:ce;const r=rectCache.current;return{x:(t.clientX-r.left)/r.width*PW,y:(t.clientY-r.top)/r.height*PH};}):[pos];
       let lp=lastPoint.current;for(const p of pts){const dx=p.x-lp.x,dy=p.y-lp.y,d=Math.sqrt(dx*dx+dy*dy),st=Math.max(1,Math.floor(d/2));for(let i=0;i<=st;i++){const t=i/st;ctx.beginPath();ctx.arc(lp.x+dx*t,lp.y+dy*t,eraserSize,0,Math.PI*2);ctx.fill();}lp=p;}ctx.restore();}
     else if(tool===T.PEN){const ctx=canvasRef.current.getContext("2d");ctx.save();
-      /* Use coalesced events for smoother pen strokes on iPad */
       const evts=e.getCoalescedEvents?e.getCoalescedEvents():[];const pts=evts.length>1?evts.map(ce=>{const t=ce.touches?ce.touches[0]:ce;const r=rectCache.current;return{x:(t.clientX-r.left)/r.width*PW,y:(t.clientY-r.top)/r.height*PH,pressure:ce.pressure||pv};}):[pos];
       let lp=lastPoint.current;for(const p of pts){drawSeg(ctx,lp,p,color,brushSize,p.pressure||pv);pathPts.current.push(p);lp=p;}ctx.restore();}
     else if(tool===T.HIGHLIGHTER){pathPts.current.push(pos);const o=overlayRef.current,octx=o.getContext("2d");octx.clearRect(0,0,PW,PH);octx.save();octx.globalAlpha=.3;drawPath(octx,pathPts.current,color,brushSize*3);octx.restore();}
@@ -223,34 +224,65 @@ export default function NoteApp({onHome}) {
   const handleUp=(e)=>{
     if(isPanning.current){isPanning.current=false;return;}
     if(tool===T.SELECT&&isDraggingSel){setIsDraggingSel(false);lastPoint.current=null;return;}
-    if(tool===T.SELECT&&isDrawing&&selStart){const pos=getPos(e),x=Math.min(selStart.x,pos.x),y=Math.min(selStart.y,pos.y),w=Math.abs(pos.x-selStart.x),h=Math.abs(pos.y-selStart.y);if(w>5&&h>5){const c=canvasRef.current,ctx=c.getContext("2d"),dpr=Math.min(window.devicePixelRatio||1,2);const id=ctx.getImageData(x*dpr,y*dpr,w*dpr,h*dpr);selSnap.current=c.toDataURL();ctx.fillStyle="#ffffff";ctx.fillRect(x,y,w,h);selSnap.current=c.toDataURL();setSelection({x,y,w,h,imageData:id});const tc=document.createElement("canvas");tc.width=id.width;tc.height=id.height;tc.getContext("2d").putImageData(id,0,0);ctx.drawImage(tc,x,y,w,h);const o=overlayRef.current,octx=o.getContext("2d");octx.clearRect(0,0,PW,PH);octx.save();octx.setLineDash([6,4]);octx.strokeStyle=th.accent;octx.lineWidth=2;octx.strokeRect(x,y,w,h);octx.restore();}else overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);setSelStart(null);setIsDrawing(false);return;}
-    if(!isDrawing)return;
-    if([T.LINE,T.ARROW,T.RECT,T.DIAMOND,T.CIRCLE].includes(tool)&&shapeStart){const pos=getPos(e),ctx=canvasRef.current.getContext("2d");overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);ctx.save();if(tool===T.LINE){ctx.strokeStyle=color;ctx.lineWidth=brushSize;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(shapeStart.x,shapeStart.y);ctx.lineTo(pos.x,pos.y);ctx.stroke();}else if(tool===T.ARROW)drawArrow(ctx,shapeStart.x,shapeStart.y,pos.x,pos.y,color,brushSize);else if(tool===T.RECT){ctx.strokeStyle=color;ctx.lineWidth=brushSize;ctx.lineCap="round";ctx.strokeRect(shapeStart.x,shapeStart.y,pos.x-shapeStart.x,pos.y-shapeStart.y);}else if(tool===T.DIAMOND)drawDiamond(ctx,shapeStart.x,shapeStart.y,pos.x-shapeStart.x,pos.y-shapeStart.y,color,brushSize);else if(tool===T.CIRCLE){const rx=Math.abs(pos.x-shapeStart.x)/2,ry=Math.abs(pos.y-shapeStart.y)/2;ctx.strokeStyle=color;ctx.lineWidth=brushSize;ctx.lineCap="round";ctx.beginPath();ctx.ellipse(shapeStart.x+(pos.x-shapeStart.x)/2,shapeStart.y+(pos.y-shapeStart.y)/2,rx,ry,0,0,Math.PI*2);ctx.stroke();}ctx.restore();setShapeStart(null);}
+    if(tool===T.SELECT&&isDrawing.current&&selStart){const pos=getPos(e),x=Math.min(selStart.x,pos.x),y=Math.min(selStart.y,pos.y),w=Math.abs(pos.x-selStart.x),h=Math.abs(pos.y-selStart.y);if(w>5&&h>5){const c=canvasRef.current,ctx=c.getContext("2d"),dpr=Math.min(window.devicePixelRatio||1,2);const id=ctx.getImageData(x*dpr,y*dpr,w*dpr,h*dpr);selSnap.current=c.toDataURL();ctx.fillStyle="#ffffff";ctx.fillRect(x,y,w,h);selSnap.current=c.toDataURL();setSelection({x,y,w,h,imageData:id});const tc=document.createElement("canvas");tc.width=id.width;tc.height=id.height;tc.getContext("2d").putImageData(id,0,0);ctx.drawImage(tc,x,y,w,h);const o=overlayRef.current,octx=o.getContext("2d");octx.clearRect(0,0,PW,PH);octx.save();octx.setLineDash([6,4]);octx.strokeStyle=th.accent;octx.lineWidth=2;octx.strokeRect(x,y,w,h);octx.restore();}else overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);setSelStart(null);isDrawing.current=false;return;}
+    if(!isDrawing.current)return;
+    if([T.LINE,T.ARROW,T.RECT,T.DIAMOND,T.CIRCLE].includes(tool)&&shapeStart.current){const pos=getPos(e),ctx=canvasRef.current.getContext("2d");overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);ctx.save();const ss=shapeStart.current;if(tool===T.LINE){ctx.strokeStyle=color;ctx.lineWidth=brushSize;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(ss.x,ss.y);ctx.lineTo(pos.x,pos.y);ctx.stroke();}else if(tool===T.ARROW)drawArrow(ctx,ss.x,ss.y,pos.x,pos.y,color,brushSize);else if(tool===T.RECT){ctx.strokeStyle=color;ctx.lineWidth=brushSize;ctx.lineCap="round";ctx.strokeRect(ss.x,ss.y,pos.x-ss.x,pos.y-ss.y);}else if(tool===T.DIAMOND)drawDiamond(ctx,ss.x,ss.y,pos.x-ss.x,pos.y-ss.y,color,brushSize);else if(tool===T.CIRCLE){const rx=Math.abs(pos.x-ss.x)/2,ry=Math.abs(pos.y-ss.y)/2;ctx.strokeStyle=color;ctx.lineWidth=brushSize;ctx.lineCap="round";ctx.beginPath();ctx.ellipse(ss.x+(pos.x-ss.x)/2,ss.y+(pos.y-ss.y)/2,rx,ry,0,0,Math.PI*2);ctx.stroke();}ctx.restore();shapeStart.current=null;}
     if(tool===T.HIGHLIGHTER&&pathPts.current.length>1){const ctx=canvasRef.current.getContext("2d");ctx.save();ctx.globalAlpha=.3;drawPath(ctx,pathPts.current,color,brushSize*3);ctx.restore();overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);}
-    setIsDrawing(false);lastPoint.current=null;pathPts.current=[];autoPageFlag.current=false;saveHist();
+    isDrawing.current=false;lastPoint.current=null;pathPts.current=[];autoPageFlag.current=false;saveHist();
   };
 
   /* Zoom: Ctrl+Wheel */
   useEffect(()=>{const el=scrollRef.current;if(!el)return;const h=(e)=>{if(e.ctrlKey||e.metaKey){e.preventDefault();const r=el.getBoundingClientRect();const mx=e.clientX-r.left+el.scrollLeft,my=e.clientY-r.top+el.scrollTop;const oz=zoomRef.current,nz=Math.max(.3,Math.min(5,oz*(e.deltaY>0?.94:1/.94)));setZoom(nz);zoomRef.current=nz;requestAnimationFrame(()=>{el.scrollLeft=mx*(nz/oz)-(e.clientX-r.left);el.scrollTop=my*(nz/oz)-(e.clientY-r.top);});}};el.addEventListener("wheel",h,{passive:false});return()=>el.removeEventListener("wheel",h);},[]);
   useEffect(()=>{if(tool!==T.SELECT&&selection)commitSel();},[tool]);
 
-  /* ═══ Persistence ═══ */
-  const collectState=useCallback(()=>{const pd={};pgRef.current.forEach((pg,i)=>{const c=cMap.current.get(pg.id);if(c)pd[i]={image:c.toDataURL(),texts:i===cpRef.current?tiRef.current:(pdRef.current[i]?.texts||[])};});return{version:5,pages:pgRef.current,currentPage:cpRef.current,pageData:pd,settings:{showGrid:sgRef.current,showRuled:srRef.current,dark}};},[dark]);
-  const saveIDB=useCallback(async()=>{try{await idbSet("app_state",collectState());setSaveStatus("saved");setTimeout(()=>setSaveStatus("idle"),1500);}catch(e){console.error(e);}},[collectState]);
+  /* ═══ Persistence — FIX: ALL keyed by page ID, no stale closure ═══ */
+  const collectState=useCallback(()=>{
+    const pd={};
+    pgRef.current.forEach((pg,i)=>{
+      const c=cMap.current.get(pg.id);
+      if(c)pd[pg.id]={image:c.toDataURL(),texts:i===cpRef.current?tiRef.current:(pdRef.current[pg.id]?.texts||[])};
+    });
+    pdRef.current=pd;
+    return{version:6,pages:pgRef.current,currentPage:cpRef.current,pageData:pd,settings:{showGrid:sgRef.current,showRuled:srRef.current,dark:darkRef.current}};
+  },[]); /* FIX: no deps — uses refs only, never stale */
+
+  const saveIDB=useCallback(async()=>{try{const s=collectState();await idbSet("app_state",s);setSaveStatus("saved");setTimeout(()=>setSaveStatus("idle"),1500);}catch(e){console.error("Save failed:",e);}},[collectState]);
+
   const dlBackup=useCallback(()=>{try{const s=collectState();if(lastBackup.current&&Date.now()-lastBackup.current<10000)return;lastBackup.current=Date.now();const b=new Blob([JSON.stringify(s)],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=`ink-notes-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(u);}catch(e){console.error(e);}},[collectState]);
   const manualSave=useCallback(()=>{lastBackup.current=null;dlBackup();},[dlBackup]);
-  const restoreState=useCallback((s)=>{if(!s?.pages)return;setPages(s.pages);setCurrentPage(s.currentPage||0);setPageData(s.pageData||{});pdRef.current=s.pageData||{};if(s.settings){setShowGrid(s.settings.showGrid||false);setShowRuled(s.settings.showRuled||false);if(s.settings.dark!==undefined)setDark(s.settings.dark);}/* Canvases restore via initC callback refs reading pdRef */},[]);
-  const handleUpload=useCallback((e)=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=(ev)=>{try{const s=JSON.parse(ev.target.result);/* Force re-mount canvases by clearing maps */cMap.current.clear();oMap.current.clear();restoreState(s);idbSet("app_state",s);setShowUploadModal(false);}catch{alert("Invalid backup.");}};r.readAsText(f);},[restoreState]);
+
+  /* FIX: restoreState sets refs SYNCHRONOUSLY before React re-renders canvases */
+  const restoreState=useCallback((s)=>{
+    if(!s?.pages)return;
+    /* Migrate v5 (index-keyed) to v6 (id-keyed) */
+    let pd=s.pageData||{};
+    const firstKey=Object.keys(pd)[0];
+    if(firstKey!==undefined&&s.pages.length>0&&String(s.pages[0].id)!==String(firstKey)){
+      const migrated={};
+      s.pages.forEach((pg,i)=>{if(pd[i])migrated[pg.id]=pd[i];});
+      pd=migrated;
+    }
+    /* Set refs BEFORE state updates → canvases will find data in initC */
+    pdRef.current=pd;
+    pgRef.current=s.pages;
+    cpRef.current=s.currentPage||0;
+    /* Now trigger re-render */
+    setPages([...s.pages]); /* spread to force new array identity */
+    setCurrentPage(s.currentPage||0);
+    if(s.settings){setShowGrid(s.settings.showGrid||false);setShowRuled(s.settings.showRuled||false);if(s.settings.dark!==undefined)setDark(s.settings.dark);}
+  },[]);
+
+  const handleUpload=useCallback((e)=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=(ev)=>{try{const s=JSON.parse(ev.target.result);cMap.current.clear();oMap.current.clear();restoreState(s);idbSet("app_state",s);setShowUploadModal(false);}catch{alert("Invalid backup.");}};r.readAsText(f);},[restoreState]);
 
   /* Lifecycle */
-  useEffect(()=>{(async()=>{try{const s=await idbGet("app_state");if(s?.pages){pdRef.current=s.pageData||{};restoreState(s);}}catch{}setAppReady(true);})();},[]);
+  useEffect(()=>{(async()=>{try{const s=await idbGet("app_state");if(s?.pages){restoreState(s);}}catch(e){console.error("Restore failed:",e);}setAppReady(true);})();},[]);
   useEffect(()=>{if(!appReady)return;const i=setInterval(()=>saveIDB(),5000);return()=>clearInterval(i);},[appReady,saveIDB]);
   const resetInact=useCallback(()=>{if(inactTimer.current)clearTimeout(inactTimer.current);inactTimer.current=setTimeout(()=>{saveIDB();dlBackup();},INACTIVITY_TIMEOUT);},[saveIDB,dlBackup]);
   useEffect(()=>{const ev=["pointerdown","pointermove","keydown"];ev.forEach(e=>window.addEventListener(e,resetInact));resetInact();return()=>{ev.forEach(e=>window.removeEventListener(e,resetInact));};},[resetInact]);
   useEffect(()=>{const bu=()=>{try{const s=collectState();const r=indexedDB.open(DB_NAME,DB_VERSION);r.onsuccess=()=>r.result.transaction(STORE,"readwrite").objectStore(STORE).put(s,"app_state");}catch{}};const vis=()=>{if(document.visibilityState==="hidden")saveIDB();};window.addEventListener("beforeunload",bu);document.addEventListener("visibilitychange",vis);return()=>{window.removeEventListener("beforeunload",bu);document.removeEventListener("visibilitychange",vis);};},[collectState,saveIDB]);
 
   const clearCanvas=()=>{const ctx=canvasRef.current?.getContext("2d");if(!ctx)return;ctx.fillStyle="#ffffff";ctx.fillRect(0,0,PW,PH);setTextInputs([]);setSelection(null);selSnap.current=null;saveHist();};
-  const savePD=useCallback(()=>{const c=canvasRef.current;if(!c)return;const pd={...pdRef.current,[currentPage]:{image:c.toDataURL(),texts:textInputs}};pdRef.current=pd;setPageData(pd);},[currentPage,textInputs]);
+  const savePD=useCallback(()=>{const pid=pages[currentPage]?.id;const c=canvasRef.current;if(!c||!pid)return;pdRef.current[pid]={image:c.toDataURL(),texts:textInputs};},[currentPage,textInputs,pages]);
   const switchPg=(i)=>{if(selection)commitSel();activatePage(i);const c=cMap.current.get(pages[i]?.id);if(c)c.scrollIntoView({behavior:"smooth",block:"center"});};
   const addPg=()=>{savePD();const np={id:Date.now(),name:`Page ${pages.length+1}`};setPages(p=>[...p,np]);setTimeout(()=>{const c=cMap.current.get(np.id);if(c)c.scrollIntoView({behavior:"smooth",block:"center"});},200);};
   const startRename=(i)=>{setRenamingPage(i);setRenameValue(pages[i].name);setTimeout(()=>renameRef.current?.focus(),50);};
@@ -262,7 +294,7 @@ export default function NoteApp({onHome}) {
   const openEmailModal=()=>{setEmailSubject(`Ink Notes — ${pages[currentPage]?.name||"Page "+(currentPage+1)}`);setEmailTo("");setEmailPreview(getExportDataUrl());setShowEmailModal(true);};
   const sendEmail=async()=>{if(!emailTo.includes("@"))return;setEmailSending(true);try{const d=getExportDataUrl();if(navigator.share&&navigator.canShare){const bl=await(await fetch(d)).blob();const f=new File([bl],"note.png",{type:"image/png"});if(navigator.canShare({files:[f]})){try{await navigator.share({title:emailSubject,files:[f]});setShowEmailModal(false);setEmailSending(false);return;}catch{}}}const bl=await(await fetch(d)).blob();const u=URL.createObjectURL(bl);const a=document.createElement("a");a.href=u;a.download="note.png";document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(u);window.open(`mailto:${encodeURIComponent(emailTo)}?subject=${encodeURIComponent(emailSubject)}`,"_self");setShowEmailModal(false);}catch{}setEmailSending(false);};
 
-  /* Grid/ruled for active page */
+  /* Grid/ruled */
   useEffect(()=>{if(!appReady)return;const c=canvasRef.current;if(!c)return;const ctx=c.getContext("2d");if(showGrid||showRuled){ctx.fillStyle="#ffffff";ctx.fillRect(0,0,PW,PH);if(showGrid){ctx.save();ctx.strokeStyle="#e0ddd6";ctx.lineWidth=.5;for(let x=0;x<PW;x+=24){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,PH);ctx.stroke();}for(let y=0;y<PH;y+=24){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(PW,y);ctx.stroke();}ctx.restore();}if(showRuled){ctx.save();ctx.strokeStyle="#c8d0d8";ctx.lineWidth=.7;for(let y=80;y<PH;y+=32){ctx.beginPath();ctx.moveTo(40,y);ctx.lineTo(PW-20,y);ctx.stroke();}ctx.strokeStyle="#d8a0a0";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(60,40);ctx.lineTo(60,PH-20);ctx.stroke();ctx.restore();}saveHist();}},[showGrid,showRuled,appReady]);
 
   /* Shortcuts */
@@ -297,7 +329,6 @@ export default function NoteApp({onHome}) {
       {!compact&&<div style={{position:"absolute",left:"16px",top:"50%",transform:"translateY(-50%)",zIndex:100,display:"flex",flexDirection:"column",alignItems:"center",gap:"2px",background:th.toolbar,backdropFilter:"blur(20px)",border:`1px solid ${th.toolbarBorder}`,borderRadius:"20px",padding:"8px 6px",boxShadow:th.shadow}}>
         {toolDock.map((item,i)=>item==="sep"?<div key={i} style={{width:"22px",height:"1px",background:th.border,margin:"4px 0"}}/>:(<div key={item.id} style={{position:"relative"}} onMouseEnter={()=>setHoveredTool(item.id)} onMouseLeave={()=>setHoveredTool(null)}><button onClick={()=>setTool(item.id)} style={{width:"38px",height:"38px",borderRadius:"12px",border:"none",background:tool===item.id?th.accentGrad:"transparent",color:tool===item.id?"#fff":th.textSecondary,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all .15s",boxShadow:tool===item.id?th.glow:"none",transform:tool===item.id?"scale(1.05)":"scale(1)"}}>{item.icon}</button>{hoveredTool===item.id&&tool!==item.id&&<div style={{position:"absolute",left:"48px",top:"50%",transform:"translateY(-50%)",background:th.surface,border:`1px solid ${th.border}`,borderRadius:"8px",padding:"4px 10px",fontSize:"11px",fontWeight:600,color:th.text,whiteSpace:"nowrap",boxShadow:th.shadow,pointerEvents:"none",zIndex:200}}>{item.tip}</div>}</div>))}
       </div>}
-      {/* ═══ COMPACT TOOLS ═══ */}
       {compact&&<div style={{position:"absolute",top:"52px",left:"50%",transform:"translateX(-50%)",zIndex:100,display:"flex",gap:"2px",background:th.toolbar,backdropFilter:"blur(16px)",border:`1px solid ${th.toolbarBorder}`,borderRadius:"16px",padding:"4px",boxShadow:th.shadow,overflowX:"auto",maxWidth:"calc(100vw - 24px)"}}>{toolDock.filter(t=>t!=="sep"&&![T.LINE,T.DIAMOND].includes(t?.id)).map(item=>(<button key={item.id} onClick={()=>setTool(item.id)} style={{width:"34px",height:"34px",borderRadius:"10px",border:"none",background:tool===item.id?th.accentGrad:"transparent",color:tool===item.id?"#fff":th.textSecondary,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:tool===item.id?th.glow:"none"}}>{item.icon}</button>))}</div>}
 
       {/* ═══ BOTTOM CONTEXT BAR ═══ */}
@@ -331,17 +362,13 @@ export default function NoteApp({onHome}) {
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:`${PAGE_PAD}px`,minWidth:dW>baseW?`${dW+PAGE_PAD*2}px`:undefined,paddingTop:`${compact?100:60}px`,paddingBottom:"200px"}}>
             {pages.map((pg,idx)=>(
               <div key={pg.id}>
-                {/* Page break divider */}
                 {idx>0&&<div style={{display:"flex",alignItems:"center",gap:"12px",padding:`${PAGE_GAP/2}px 0`,width:dW+"px",maxWidth:"100%",userSelect:"none"}}><div style={{flex:1,height:"1px",background:th.border,opacity:.5}}/><span style={{fontSize:"10px",fontWeight:700,color:th.textMuted,letterSpacing:"1.5px",textTransform:"uppercase",whiteSpace:"nowrap"}}>Page {idx+1}</span><div style={{flex:1,height:"1px",background:th.border,opacity:.5}}/></div>}
-                {/* Page */}
                 <div style={{width:dW+"px",height:dH+"px",position:"relative",borderRadius:Math.max(4,8*zoom)+"px",overflow:"hidden",boxShadow:th.pageShadow,background:"#fff",touchAction:"none"}}>
                   <div style={{width:"100%",height:"100%",filter:dark?"invert(1) hue-rotate(180deg)":"none"}}>
                     <canvas ref={el=>initC(el,pg.id)} style={{width:"100%",height:"100%",display:"block"}}/>
                     <canvas ref={el=>initO(el,pg.id)} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",pointerEvents:"none"}}/>
                   </div>
-                  {/* Active indicator */}
                   {currentPage===idx&&<div style={{position:"absolute",top:0,left:0,right:0,height:Math.max(2,3*zoom)+"px",background:th.accentGrad,transition:"opacity .2s"}}/>}
-                  {/* Text inputs for this page */}
                   {currentPage===idx&&textInputs.map(inp=>{const sx=inp.x/PW*dW,sy=inp.y/PH*dH,fs=inp.fontSize/PW*dW;return(<textarea key={inp.id} autoFocus={editingText===inp.id} value={inp.text} onChange={e=>setTextInputs(p=>p.map(t=>t.id===inp.id?{...t,text:e.target.value}:t))} onBlur={()=>textBlur(inp.id)} onKeyDown={e=>{if(e.key==="Escape")e.target.blur();}} style={{position:"absolute",left:sx+"px",top:sy+"px",fontSize:fs+"px",color:dark?invertHex(inp.color):inp.color,fontFamily:'"Literata",Georgia,serif',background:dark?"rgba(21,18,16,.95)":"rgba(255,252,247,.95)",border:`2px solid ${th.accent}`,borderRadius:"8px",outline:"none",padding:"6px 10px",minWidth:"60px",minHeight:fs*1.5+"px",resize:"both",lineHeight:1.4,zIndex:20,boxShadow:th.shadow}}/>);})}
                 </div>
               </div>
@@ -350,7 +377,6 @@ export default function NoteApp({onHome}) {
         </div>
       </div>
 
-      {/* Eraser cursor */}
       {tool===T.ERASER&&<><div ref={eraserCursorRef} style={{position:"fixed",width:(eraserSize/PW*dW*2)+"px",height:(eraserSize/PW*dW*2)+"px",borderRadius:"50%",border:`2px solid ${th.accent}`,background:dark?"rgba(224,138,66,.06)":"rgba(192,104,48,.04)",pointerEvents:"none",zIndex:9000,transform:"translate(-50%,-50%)",left:"-100px",top:"-100px"}}><div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:"3px",height:"3px",borderRadius:"50%",background:th.accent,opacity:.5}}/></div><style>{`* { cursor: none !important; }`}</style></>}
       <style>{`
         div[style*="overflow: auto"]::-webkit-scrollbar{width:6px;height:6px}
