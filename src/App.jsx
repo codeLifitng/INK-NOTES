@@ -85,7 +85,7 @@ export default function NoteApp({onHome}) {
   const isPanning=useRef(false),panStart=useRef({x:0,y:0}),spaceHeld=useRef(false);
   const lastPoint=useRef(null),pathPts=useRef([]),inactTimer=useRef(null),lastBackup=useRef(null);
   const fileRef=useRef(null),renameRef=useRef(null),penDet=useRef(false),penTO=useRef(null);
-  const autoPageFlag=useRef(false);
+  const autoPageFlag=useRef(false),dirtyPages=useRef(new Set());
   const rectCache=useRef(null),rectFrame=useRef(0);
   const zoomRef=useRef(1);
   /* FIX: pageData keyed by PAGE ID, not index */
@@ -148,7 +148,7 @@ export default function NoteApp({onHome}) {
   /* ═══ Coordinates ═══ */
   const getPageAtPt=(e)=>{for(let i=0;i<pages.length;i++){const c=cMap.current.get(pages[i].id);if(!c)continue;const r=c.getBoundingClientRect();if(e.clientY>=r.top&&e.clientY<=r.bottom&&e.clientX>=r.left&&e.clientX<=r.right)return i;}return-1;};
   const getPos=(e)=>{const c=canvasRef.current;if(!c)return{x:0,y:0,pressure:.5};const now=performance.now();if(!rectCache.current||now-rectFrame.current>100){rectCache.current=c.getBoundingClientRect();rectFrame.current=now;}const r=rectCache.current;const t=e.touches?e.touches[0]:e;return{x:(t.clientX-r.left)/r.width*PW,y:(t.clientY-r.top)/r.height*PH,pressure:e.pressure??.5};};
-  const isPalm=(e)=>{if(e.pointerType==="pen"){penDet.current=true;setPenActive(true);if(penTO.current)clearTimeout(penTO.current);penTO.current=setTimeout(()=>{penDet.current=false;setPenActive(false);},2500);return false;}if(e.pointerType==="touch"&&penDet.current)return true;if(e.pointerType==="touch"&&(e.width>20||e.height>20))return true;if(e.pointerType==="touch"&&e.pressure>0&&e.pressure<0.05)return true;return false;};
+  const isPalm=(e)=>{if(e.pointerType==="pen"){if(!penDet.current){penDet.current=true;setPenActive(true);}if(penTO.current)clearTimeout(penTO.current);penTO.current=setTimeout(()=>{penDet.current=false;setPenActive(false);},5000);return false;}if(e.pointerType==="touch"&&penDet.current)return true;if(e.pointerType==="touch"&&(e.width>20||e.height>20))return true;if(e.pointerType==="touch"&&e.pressure>0&&e.pressure<0.05)return true;return false;};
   const shouldPan=()=>tool===T.HAND||spaceHeld.current;
 
   /* ═══ Drawing helpers ═══ */
@@ -158,7 +158,7 @@ export default function NoteApp({onHome}) {
   const drawDiamond=(ctx,x,y,w,h,col,sz)=>{const cx=x+w/2,cy=y+h/2,hw=Math.abs(w)/2,hh=Math.abs(h)/2;ctx.strokeStyle=col;ctx.lineWidth=sz;ctx.lineCap="round";ctx.lineJoin="round";ctx.beginPath();ctx.moveTo(cx,cy-hh);ctx.lineTo(cx+hw,cy);ctx.lineTo(cx,cy+hh);ctx.lineTo(cx-hw,cy);ctx.closePath();ctx.stroke();};
 
   /* ═══ History ═══ */
-  const saveHist=useCallback(()=>{const c=canvasRef.current;if(!c)return;const d=c.toDataURL();setHistory(p=>{const h=p.slice(0,historyIndex+1);h.push(d);return h.length>50?h.slice(-50):h;});setHistoryIndex(p=>Math.min(p+1,49));},[historyIndex]);
+  const saveHist=useCallback(()=>{const c=canvasRef.current;if(!c)return;const pid=pgRef.current[cpRef.current]?.id;if(pid)dirtyPages.current.add(pid);requestAnimationFrame(()=>{const d=c.toDataURL();setHistory(p=>{const h=p.slice(0,historyIndex+1);h.push(d);return h.length>50?h.slice(-50):h;});setHistoryIndex(p=>Math.min(p+1,49));});},[historyIndex]);
   const restoreImg=(src)=>{const img=new Image();img.onload=()=>{const c=canvasRef.current,ctx=c.getContext("2d");ctx.clearRect(0,0,PW,PH);ctx.drawImage(img,0,0,PW,PH);};img.src=src;};
   const undo=useCallback(()=>{if(historyIndex<=0)return;setSelection(null);selSnap.current=null;restoreImg(history[historyIndex-1]);setHistoryIndex(i=>i-1);},[history,historyIndex]);
   const redo=useCallback(()=>{if(historyIndex>=history.length-1)return;setSelection(null);selSnap.current=null;restoreImg(history[historyIndex+1]);setHistoryIndex(i=>i+1);},[history,historyIndex]);
@@ -176,7 +176,7 @@ export default function NoteApp({onHome}) {
     if(idx===currentPage||idx<0||idx>=pages.length)return;
     const curPid=pages[currentPage]?.id;
     const c=canvasRef.current;
-    if(c&&curPid){pdRef.current[curPid]={image:c.toDataURL(),texts:textInputs};}
+    if(c&&curPid){pdRef.current[curPid]={image:c.toDataURL(),texts:textInputs};dirtyPages.current.delete(curPid);}
     setCurrentPage(idx);
     const pid=pages[idx].id;canvasRef.current=cMap.current.get(pid);overlayRef.current=oMap.current.get(pid);
     setTextInputs(pdRef.current[pid]?.texts||[]);setHistory([]);setHistoryIndex(-1);setSelection(null);selSnap.current=null;
@@ -198,7 +198,7 @@ export default function NoteApp({onHome}) {
     if(tool===T.ERASER){const ctx=c.getContext("2d");ctx.save();ctx.fillStyle="#ffffff";ctx.beginPath();ctx.arc(pos.x,pos.y,eraserSize,0,Math.PI*2);ctx.fill();ctx.restore();}
   };
 
-  const handleMove=(e)=>{e.preventDefault();if(isPalm(e))return;
+  const handleMove=(e)=>{e.preventDefault();if(e.pointerType==="touch"&&penDet.current)return;if(!isDrawing.current&&!isPanning.current&&isPalm(e))return;
     if(isPanning.current&&shouldPan()){const el=scrollRef.current;el.scrollLeft-=(e.clientX-panStart.current.x);el.scrollTop-=(e.clientY-panStart.current.y);panStart.current={x:e.clientX,y:e.clientY};return;}
     const pos=getPos(e);
     /* Auto-create page near bottom of last page — debounced */
@@ -240,8 +240,13 @@ export default function NoteApp({onHome}) {
     const pd={};
     pgRef.current.forEach((pg,i)=>{
       const c=cMap.current.get(pg.id);
-      if(c)pd[pg.id]={image:c.toDataURL(),texts:i===cpRef.current?tiRef.current:(pdRef.current[pg.id]?.texts||[])};
+      if(!c)return;
+      const isCurrent=i===cpRef.current;
+      const isDirty=dirtyPages.current.has(pg.id)||isCurrent;
+      if(isDirty){pd[pg.id]={image:c.toDataURL(),texts:isCurrent?tiRef.current:(pdRef.current[pg.id]?.texts||[])};}
+      else{pd[pg.id]=pdRef.current[pg.id]||{image:c.toDataURL(),texts:[]};}
     });
+    dirtyPages.current.clear();
     pdRef.current=pd;
     return{version:6,pages:pgRef.current,currentPage:cpRef.current,pageData:pd,settings:{showGrid:sgRef.current,showRuled:srRef.current,dark:darkRef.current}};
   },[]); /* FIX: no deps — uses refs only, never stale */
@@ -275,7 +280,7 @@ export default function NoteApp({onHome}) {
   const handleUpload=useCallback((e)=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=(ev)=>{try{const s=JSON.parse(ev.target.result);cMap.current.clear();oMap.current.clear();restoreState(s);idbSet("app_state",s);setShowUploadModal(false);}catch{alert("Invalid backup.");}};r.readAsText(f);},[restoreState]);
 
   /* Lifecycle */
-  useEffect(()=>{(async()=>{try{const s=await idbGet("app_state");if(s?.pages){restoreState(s);}}catch(e){console.error("Restore failed:",e);}setAppReady(true);})();},[]);
+  useEffect(()=>{(async()=>{try{const s=await idbGet("app_state");if(s?.pages){cMap.current.clear();oMap.current.clear();restoreState(s);}}catch(e){console.error("Restore failed:",e);}setAppReady(true);})();},[]);
   useEffect(()=>{if(!appReady)return;const i=setInterval(()=>saveIDB(),5000);return()=>clearInterval(i);},[appReady,saveIDB]);
   const resetInact=useCallback(()=>{if(inactTimer.current)clearTimeout(inactTimer.current);inactTimer.current=setTimeout(()=>{saveIDB();dlBackup();},INACTIVITY_TIMEOUT);},[saveIDB,dlBackup]);
   useEffect(()=>{const ev=["pointerdown","pointermove","keydown"];ev.forEach(e=>window.addEventListener(e,resetInact));resetInact();return()=>{ev.forEach(e=>window.removeEventListener(e,resetInact));};},[resetInact]);
