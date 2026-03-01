@@ -145,18 +145,19 @@ export default function NoteApp({onHome}) {
     if(tool===T.SELECT){if(selection&&inSel(pos)){setIsDraggingSel(true);lastPoint.current=pos;return;}if(selection)commitSel();setSelStart(pos);isDrawing.current=true;return;}
     if(selection)commitSel();
     if(tool===T.TEXT){setTextInputs(p=>[...p,{id:Date.now(),x:pos.x,y:pos.y,text:"",color,fontSize}]);setEditingText(Date.now());return;}
+    /* Mobile touch (no pen): delay draw to detect scroll-vs-draw gesture */
+    if(e.pointerType==="touch"&&!penDet.current){touchGesture.current={x:e.clientX,y:e.clientY};return;}
     if([T.LINE,T.ARROW,T.RECT,T.DIAMOND,T.CIRCLE].includes(tool)){shapeStart.current=pos;isDrawing.current=true;return;}
     isDrawing.current=true;lastPoint.current=pos;pathPts.current=[pos];
     if(tool===T.ERASER){const ctx=c.getContext("2d");ctx.save();ctx.fillStyle="#ffffff";ctx.beginPath();ctx.arc(pos.x,pos.y,eraserSize,0,Math.PI*2);ctx.fill();ctx.restore();}
-    /* Track gesture for scroll-vs-draw detection on mobile (no pen detected) */
-    if(e.pointerType==="touch"&&!penDet.current)touchGesture.current={x:e.clientX,y:e.clientY};
   };
 
   const handleMove=(e)=>{e.preventDefault();if(pinchRef.current)return;
-    /* Scroll-vs-draw detection: if first ~10px is a vertical swipe, cancel draw → scroll */
-    if(touchGesture.current&&isDrawing.current){const dx=e.clientX-touchGesture.current.x,dy=e.clientY-touchGesture.current.y,adx=Math.abs(dx),ady=Math.abs(dy);
-      if(ady>10&&ady>adx*1.5){isDrawing.current=false;lastPoint.current=null;pathPts.current=[];shapeStart.current=null;overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);if(historyIndex>=0&&history[historyIndex])restoreImg(history[historyIndex]);isPanning.current=true;panStart.current={x:e.clientX,y:e.clientY};touchGesture.current=null;return;}
-      if(adx+ady>15)touchGesture.current=null;}
+    /* Pending touch gesture: decide scroll vs draw BEFORE any marks are made */
+    if(touchGesture.current&&!isDrawing.current&&!isPanning.current){const dx=e.clientX-touchGesture.current.x,dy=e.clientY-touchGesture.current.y,adx=Math.abs(dx),ady=Math.abs(dy);
+      if(ady>12&&ady>adx*1.3){isPanning.current=true;panStart.current={x:e.clientX,y:e.clientY};touchGesture.current=null;return;}
+      if(adx+ady>8){const pos=getPos(e);if([T.LINE,T.ARROW,T.RECT,T.DIAMOND,T.CIRCLE].includes(tool))shapeStart.current=pos;else{lastPoint.current=pos;pathPts.current=[pos];if(tool===T.ERASER){const ctx=canvasRef.current.getContext("2d");ctx.save();ctx.fillStyle="#ffffff";ctx.beginPath();ctx.arc(pos.x,pos.y,eraserSize,0,Math.PI*2);ctx.fill();ctx.restore();}}isDrawing.current=true;touchGesture.current=null;}
+      else return;}
     if(!isDrawing.current&&!isPanning.current&&isPalm(e))return;
     if(isPanning.current){const el=scrollRef.current;el.scrollLeft-=(e.clientX-panStart.current.x);el.scrollTop-=(e.clientY-panStart.current.y);panStart.current={x:e.clientX,y:e.clientY};return;}
     const pos=getPos(e);
