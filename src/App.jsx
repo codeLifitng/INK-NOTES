@@ -58,7 +58,7 @@ const COLORS = [
 const BRUSH_SIZES = [1, 2, 4, 6, 10, 16, 24];
 const TOOLS = { PEN: "pen", HIGHLIGHTER: "highlighter", ERASER: "eraser", TEXT: "text", LINE: "line", RECT: "rect", CIRCLE: "circle" };
 const FONT_SIZES = [14, 18, 24, 32, 48, 64];
-const INACTIVITY_TIMEOUT = 120000;
+const INACTIVITY_TIMEOUT = 1800000; // 30 minutes
 
 /* ─────────────── Main App ─────────────── */
 export default function NoteApp() {
@@ -90,6 +90,8 @@ export default function NoteApp() {
   const inactivityTimer = useRef(null);
   const lastSavedBackup = useRef(null);
   const fileInputRef = useRef(null);
+  const penDetected = useRef(false);
+  const penTimeout = useRef(null);
   const pageDataRef = useRef(pageData);
   const pagesRef = useRef(pages);
   const currentPageRef = useRef(currentPage);
@@ -364,22 +366,51 @@ export default function NoteApp() {
     return { x: touch.clientX - rect.left, y: touch.clientY - rect.top, pressure: e.pressure ?? 0.5 };
   };
 
-  const drawLine = (ctx, from, to, sc, size, alpha = 1, pVal = 1) => {
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.strokeStyle = sc;
+  // Palm rejection: if a pen/stylus is detected, ignore touch input for a window of time
+  const isPalmTouch = (e) => {
+    if (e.pointerType === "pen") {
+      penDetected.current = true;
+      if (penTimeout.current) clearTimeout(penTimeout.current);
+      penTimeout.current = setTimeout(() => { penDetected.current = false; }, 500);
+      return false;
+    }
+    if (e.pointerType === "touch" && penDetected.current) return true;
+    if (e.pointerType === "touch" && (e.width > 30 || e.height > 30)) return true;
+    return false;
+  };
+
+  const drawSegment = (ctx, from, to, strokeColor, size, pVal = 1) => {
+    ctx.strokeStyle = strokeColor;
     ctx.lineWidth = size * Math.max(0.3, pVal);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.beginPath();
     ctx.moveTo(from.x, from.y);
-    ctx.quadraticCurveTo(from.x, from.y, (from.x + to.x) / 2, (from.y + to.y) / 2);
+    ctx.lineTo(to.x, to.y);
     ctx.stroke();
-    ctx.restore();
+  };
+
+  // Draw full smooth path on a context (used for highlighter on overlay)
+  const drawFullPath = (ctx, points, strokeColor, size) => {
+    if (points.length < 2) return;
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = size;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length - 1; i++) {
+      const mx = (points[i].x + points[i + 1].x) / 2;
+      const my = (points[i].y + points[i + 1].y) / 2;
+      ctx.quadraticCurveTo(points[i].x, points[i].y, mx, my);
+    }
+    ctx.lineTo(points[points.length - 1].x, points[points.length - 1].y);
+    ctx.stroke();
   };
 
   const handlePointerDown = (e) => {
     e.preventDefault();
+    if (isPalmTouch(e)) return;
     const pos = getPointerPos(e);
     setPressure(pos.pressure || 0.5);
     if (tool === TOOLS.TEXT) {
@@ -395,14 +426,18 @@ export default function NoteApp() {
     lastPoint.current = pos;
     pathPoints.current = [pos];
     if (tool === TOOLS.ERASER) {
+      // Paint white instead of destination-out to avoid off-white artifacts
       const ctx = canvasRef.current.getContext("2d");
-      ctx.save(); ctx.globalCompositeOperation = "destination-out";
-      ctx.beginPath(); ctx.arc(pos.x, pos.y, brushSize * 2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      ctx.save();
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath(); ctx.arc(pos.x, pos.y, brushSize * 2, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
     }
   };
 
   const handlePointerMove = (e) => {
     e.preventDefault();
+    if (isPalmTouch(e)) return;
     if (!isDrawing) return;
     const pos = getPointerPos(e);
     const pVal = pos.pressure || pressure;
@@ -421,14 +456,41 @@ export default function NoteApp() {
       }
       octx.restore(); return;
     }
-    const ctx = canvasRef.current.getContext("2d");
+
     if (tool === TOOLS.ERASER) {
-      ctx.save(); ctx.globalCompositeOperation = "destination-out";
-      ctx.beginPath(); ctx.arc(pos.x, pos.y, brushSize * 2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      // Paint white circles along the path for smooth erasing
+      const ctx = canvasRef.current.getContext("2d");
+      ctx.save();
+      ctx.fillStyle = "#ffffff";
+      // Fill between lastPoint and pos for continuous coverage
+      const dx = pos.x - lastPoint.current.x;
+      const dy = pos.y - lastPoint.current.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const steps = Math.max(1, Math.floor(dist / 2));
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const x = lastPoint.current.x + dx * t;
+        const y = lastPoint.current.y + dy * t;
+        ctx.beginPath(); ctx.arc(x, y, brushSize * 2, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
     } else if (tool === TOOLS.PEN) {
-      drawLine(ctx, lastPoint.current, pos, color, brushSize, 1, pVal);
+      const ctx = canvasRef.current.getContext("2d");
+      ctx.save();
+      drawSegment(ctx, lastPoint.current, pos, color, brushSize, pVal);
+      ctx.restore();
+      pathPoints.current.push(pos);
     } else if (tool === TOOLS.HIGHLIGHTER) {
-      drawLine(ctx, lastPoint.current, pos, color, brushSize * 3, 0.3, 1);
+      // Draw entire path on overlay canvas each frame for clean non-overlapping highlight
+      pathPoints.current.push(pos);
+      const ov = overlayCanvasRef.current;
+      const octx = ov.getContext("2d");
+      const r = ov.parentElement.getBoundingClientRect();
+      octx.clearRect(0, 0, r.width, r.height);
+      octx.save();
+      octx.globalAlpha = 0.3;
+      drawFullPath(octx, pathPoints.current, color, brushSize * 3);
+      octx.restore();
     }
     lastPoint.current = pos;
   };
@@ -451,6 +513,20 @@ export default function NoteApp() {
       }
       ctx.restore(); setShapeStart(null);
     }
+
+    // Highlighter: stamp the overlay onto the main canvas, then clear overlay
+    if (tool === TOOLS.HIGHLIGHTER && pathPoints.current.length > 1) {
+      const ctx = canvasRef.current.getContext("2d");
+      const ov = overlayCanvasRef.current;
+      const r = ov.parentElement.getBoundingClientRect();
+      ctx.save();
+      ctx.globalAlpha = 0.3;
+      drawFullPath(ctx, pathPoints.current, color, brushSize * 3);
+      ctx.restore();
+      // Clear overlay
+      ov.getContext("2d").clearRect(0, 0, r.width, r.height);
+    }
+
     setIsDrawing(false); lastPoint.current = null; pathPoints.current = []; saveToHistory();
   };
 
@@ -762,7 +838,10 @@ export default function NoteApp() {
           <canvas ref={canvasRef}
             onPointerDown={handlePointerDown} onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp}
-            style={{ position: "absolute", top: 0, left: 0, touchAction: "none" }}
+            onPointerCancel={handlePointerUp}
+            onTouchStart={(e) => e.preventDefault()}
+            onTouchMove={(e) => e.preventDefault()}
+            style={{ position: "absolute", top: 0, left: 0, touchAction: "none", msTouchAction: "none" }}
           />
           <canvas ref={overlayCanvasRef} style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none", touchAction: "none" }} />
           {textInputs.map((input) => (
@@ -797,7 +876,7 @@ export default function NoteApp() {
         padding: "6px 16px", background: "#fff", borderTop: "1px solid #e8e6e3",
         fontSize: "11px", color: "#999", fontWeight: 500,
       }}>
-        <span>Page {currentPage + 1} of {pages.length}</span>
+        <span>Page {currentPage + 1} of {pages.length} · Palm rejection ON</span>
         <span style={{ color: "#bbb" }}>
           {tool === TOOLS.PEN && "✒️ Pen — pressure sensitive"}
           {tool === TOOLS.HIGHLIGHTER && "🖍️ Highlighter"}
