@@ -68,7 +68,8 @@ export default function NoteApp({onHome}) {
   const [pages,setPages]=useState([{id:1,name:"Page 1"}]),[currentPage,setCurrentPage]=useState(0),[pageData,setPageData]=useState({});
   const [showGrid,setShowGrid]=useState(false),[showRuled,setShowRuled]=useState(false);
   const [textInputs,setTextInputs]=useState([]),[editingText,setEditingText]=useState(null);
-  const [shapeStart,setShapeStart]=useState(null),[sidebarOpen,setSidebarOpen]=useState(false),[pressure,setPressure]=useState(1);
+  const [shapeStart,setShapeStart]=useState(null),[sidebarOpen,setSidebarOpen]=useState(false);
+  const pressureRef=useRef(1);
   const [saveStatus,setSaveStatus]=useState("idle"),[showUploadModal,setShowUploadModal]=useState(false);
   const [showEmailModal,setShowEmailModal]=useState(false),[emailTo,setEmailTo]=useState(""),[emailSubject,setEmailSubject]=useState("");
   const [emailSending,setEmailSending]=useState(false),[emailPreview,setEmailPreview]=useState(""),[appReady,setAppReady]=useState(false);
@@ -77,10 +78,12 @@ export default function NoteApp({onHome}) {
   const selSnap=useRef(null);
   const [zoom,setZoom]=useState(1),[baseW,setBaseW]=useState(800),[hoveredTool,setHoveredTool]=useState(null);
   const [winW,setWinW]=useState(typeof window!=="undefined"?window.innerWidth:1200);
+  const [penActive,setPenActive]=useState(false); /* controls touchAction for iPad palm rejection */
 
   const isPanning=useRef(false),panStart=useRef({x:0,y:0}),spaceHeld=useRef(false);
   const lastPoint=useRef(null),pathPts=useRef([]),inactTimer=useRef(null),lastBackup=useRef(null);
   const fileRef=useRef(null),renameRef=useRef(null),penDet=useRef(false),penTO=useRef(null);
+  const autoPageFlag=useRef(false); /* debounce auto-page creation */
   const pdRef=useRef(pageData),pgRef=useRef(pages),cpRef=useRef(currentPage),tiRef=useRef(textInputs);
   const sgRef=useRef(showGrid),srRef=useRef(showRuled),zoomRef=useRef(1);
 
@@ -109,6 +112,22 @@ export default function NoteApp({onHome}) {
   /* Eraser cursor */
   useEffect(()=>{const hm=(e)=>{const el=eraserCursorRef.current;if(el){el.style.left=e.clientX+"px";el.style.top=e.clientY+"px";}};if(tool===T.ERASER){window.addEventListener("pointermove",hm);return()=>window.removeEventListener("pointermove",hm);}},[tool]);
 
+  /* iPad: block native touch when pen is active — prevents palm scroll/select */
+  useEffect(()=>{
+    if(!penActive)return;
+    const block=(e)=>{
+      /* Only block touch events, let pen through */
+      if(e.touches&&e.touches.length>0){
+        const t=e.touches[0];
+        /* Allow if it's clearly intentional single-finger (no pen recently) — but penActive means pen WAS recent */
+        e.preventDefault();e.stopPropagation();
+      }
+    };
+    document.addEventListener("touchstart",block,{passive:false,capture:true});
+    document.addEventListener("touchmove",block,{passive:false,capture:true});
+    return()=>{document.removeEventListener("touchstart",block,{capture:true});document.removeEventListener("touchmove",block,{capture:true});};
+  },[penActive]);
+
   /* ═══ Canvas init via callback refs ═══ */
   const initC=useCallback((el,pid)=>{
     if(!el||cMap.current.get(pid)===el)return;cMap.current.set(pid,el);
@@ -124,8 +143,9 @@ export default function NoteApp({onHome}) {
 
   /* ═══ Coordinates ═══ */
   const getPageAtPt=(e)=>{for(let i=0;i<pages.length;i++){const c=cMap.current.get(pages[i].id);if(!c)continue;const r=c.getBoundingClientRect();if(e.clientY>=r.top&&e.clientY<=r.bottom&&e.clientX>=r.left&&e.clientX<=r.right)return i;}return-1;};
-  const getPos=(e)=>{const c=canvasRef.current;if(!c)return{x:0,y:0,pressure:.5};const r=c.getBoundingClientRect();const t=e.touches?e.touches[0]:e;return{x:(t.clientX-r.left)/r.width*PW,y:(t.clientY-r.top)/r.height*PH,pressure:e.pressure??.5};};
-  const isPalm=(e)=>{if(e.pointerType==="pen"){penDet.current=true;if(penTO.current)clearTimeout(penTO.current);penTO.current=setTimeout(()=>{penDet.current=false;},500);return false;}if(e.pointerType==="touch"&&penDet.current)return true;if(e.pointerType==="touch"&&(e.width>30||e.height>30))return true;return false;};
+  const rectCache=useRef(null),rectFrame=useRef(0);
+  const getPos=(e)=>{const c=canvasRef.current;if(!c)return{x:0,y:0,pressure:.5};const now=performance.now();if(!rectCache.current||now-rectFrame.current>100){rectCache.current=c.getBoundingClientRect();rectFrame.current=now;}const r=rectCache.current;const t=e.touches?e.touches[0]:e;return{x:(t.clientX-r.left)/r.width*PW,y:(t.clientY-r.top)/r.height*PH,pressure:e.pressure??.5};};
+  const isPalm=(e)=>{if(e.pointerType==="pen"){penDet.current=true;setPenActive(true);if(penTO.current)clearTimeout(penTO.current);penTO.current=setTimeout(()=>{penDet.current=false;setPenActive(false);},2500);return false;}if(e.pointerType==="touch"&&penDet.current)return true;if(e.pointerType==="touch"&&(e.width>20||e.height>20))return true;if(e.pointerType==="touch"&&e.pressure>0&&e.pressure<0.05)return true;return false;};
   const shouldPan=()=>tool===T.HAND||spaceHeld.current;
 
   /* ═══ Drawing helpers ═══ */
@@ -159,14 +179,14 @@ export default function NoteApp({onHome}) {
   },[currentPage,pages,textInputs]);
 
   /* ═══ POINTER HANDLERS ═══ */
-  const handleDown=(e)=>{e.preventDefault();if(isPalm(e))return;
+  const handleDown=(e)=>{e.preventDefault();if(isPalm(e))return;rectCache.current=null;
     if(shouldPan()){isPanning.current=true;panStart.current={x:e.clientX,y:e.clientY};return;}
     const pi=getPageAtPt(e);if(pi===-1)return;
     if(pi!==currentPage)activatePage(pi);
     /* Small delay for ref update */
     const c=cMap.current.get(pages[pi].id);const o=oMap.current.get(pages[pi].id);
     canvasRef.current=c;overlayRef.current=o;
-    const pos=getPos(e);setPressure(pos.pressure||.5);
+    const pos=getPos(e);pressureRef.current=pos.pressure||.5;
     if(tool===T.SELECT){if(selection&&inSel(pos)){setIsDraggingSel(true);lastPoint.current=pos;return;}if(selection)commitSel();setSelStart(pos);setIsDrawing(true);return;}
     if(selection)commitSel();
     if(tool===T.TEXT){setTextInputs(p=>[...p,{id:Date.now(),x:pos.x,y:pos.y,text:"",color,fontSize}]);setEditingText(Date.now());return;}
@@ -178,17 +198,24 @@ export default function NoteApp({onHome}) {
   const handleMove=(e)=>{e.preventDefault();if(isPalm(e))return;
     if(isPanning.current&&shouldPan()){const el=scrollRef.current;el.scrollLeft-=(e.clientX-panStart.current.x);el.scrollTop-=(e.clientY-panStart.current.y);panStart.current={x:e.clientX,y:e.clientY};return;}
     const pos=getPos(e);
-    /* Auto-create page when near bottom of last page */
-    if(isDrawing&&currentPage===pages.length-1&&pos.y>PH-AUTO_ZONE&&![T.SELECT,T.HAND].includes(tool)){
+    /* Auto-create page when near bottom of last page — debounced */
+    if(isDrawing&&currentPage===pages.length-1&&pos.y>PH-AUTO_ZONE&&![T.SELECT,T.HAND].includes(tool)&&!autoPageFlag.current){
+      autoPageFlag.current=true;
       setPages(p=>[...p,{id:Date.now(),name:`Page ${p.length+1}`}]);
       setTimeout(()=>scrollRef.current?.scrollBy({top:200,behavior:"smooth"}),150);
     }
     if(tool===T.SELECT&&isDraggingSel&&selection){const dx=pos.x-lastPoint.current.x,dy=pos.y-lastPoint.current.y;setSelection(p=>({...p,x:p.x+dx,y:p.y+dy}));if(selSnap.current){const c=canvasRef.current,ctx=c.getContext("2d");const img=new Image();img.onload=()=>{ctx.clearRect(0,0,PW,PH);ctx.drawImage(img,0,0,PW,PH);const tc=document.createElement("canvas");tc.width=selection.imageData.width;tc.height=selection.imageData.height;tc.getContext("2d").putImageData(selection.imageData,0,0);ctx.drawImage(tc,selection.x+dx,selection.y+dy,selection.w,selection.h);};img.src=selSnap.current;}lastPoint.current=pos;const o=overlayRef.current,octx=o.getContext("2d");octx.clearRect(0,0,PW,PH);octx.save();octx.setLineDash([6,4]);octx.strokeStyle=th.accent;octx.lineWidth=2;octx.strokeRect(selection.x+dx,selection.y+dy,selection.w,selection.h);octx.restore();return;}
     if(tool===T.SELECT&&isDrawing&&selStart){const o=overlayRef.current,octx=o.getContext("2d");octx.clearRect(0,0,PW,PH);octx.save();octx.setLineDash([6,4]);octx.strokeStyle=th.accent;octx.lineWidth=2;octx.fillStyle="rgba(192,104,48,0.06)";const x=Math.min(selStart.x,pos.x),y=Math.min(selStart.y,pos.y),w=Math.abs(pos.x-selStart.x),h=Math.abs(pos.y-selStart.y);octx.fillRect(x,y,w,h);octx.strokeRect(x,y,w,h);octx.restore();return;}
-    if(!isDrawing)return;const pv=pos.pressure||pressure;setPressure(pv);
+    if(!isDrawing)return;const pv=pos.pressure||pressureRef.current;pressureRef.current=pv;
     if([T.LINE,T.ARROW,T.RECT,T.DIAMOND,T.CIRCLE].includes(tool)&&shapeStart){const o=overlayRef.current,octx=o.getContext("2d");octx.clearRect(0,0,PW,PH);octx.save();if(tool===T.LINE){octx.strokeStyle=color;octx.lineWidth=brushSize;octx.lineCap="round";octx.beginPath();octx.moveTo(shapeStart.x,shapeStart.y);octx.lineTo(pos.x,pos.y);octx.stroke();}else if(tool===T.ARROW)drawArrow(octx,shapeStart.x,shapeStart.y,pos.x,pos.y,color,brushSize);else if(tool===T.RECT){octx.strokeStyle=color;octx.lineWidth=brushSize;octx.lineCap="round";octx.strokeRect(shapeStart.x,shapeStart.y,pos.x-shapeStart.x,pos.y-shapeStart.y);}else if(tool===T.DIAMOND)drawDiamond(octx,shapeStart.x,shapeStart.y,pos.x-shapeStart.x,pos.y-shapeStart.y,color,brushSize);else if(tool===T.CIRCLE){const rx=Math.abs(pos.x-shapeStart.x)/2,ry=Math.abs(pos.y-shapeStart.y)/2;octx.strokeStyle=color;octx.lineWidth=brushSize;octx.lineCap="round";octx.beginPath();octx.ellipse(shapeStart.x+(pos.x-shapeStart.x)/2,shapeStart.y+(pos.y-shapeStart.y)/2,rx,ry,0,0,Math.PI*2);octx.stroke();}octx.restore();return;}
-    if(tool===T.ERASER){const ctx=canvasRef.current.getContext("2d");ctx.save();ctx.fillStyle="#ffffff";const dx=pos.x-lastPoint.current.x,dy=pos.y-lastPoint.current.y,d=Math.sqrt(dx*dx+dy*dy),st=Math.max(1,Math.floor(d/2));for(let i=0;i<=st;i++){const t=i/st;ctx.beginPath();ctx.arc(lastPoint.current.x+dx*t,lastPoint.current.y+dy*t,eraserSize,0,Math.PI*2);ctx.fill();}ctx.restore();}
-    else if(tool===T.PEN){const ctx=canvasRef.current.getContext("2d");ctx.save();drawSeg(ctx,lastPoint.current,pos,color,brushSize,pv);ctx.restore();pathPts.current.push(pos);}
+    if(tool===T.ERASER){const ctx=canvasRef.current.getContext("2d");ctx.save();ctx.fillStyle="#ffffff";
+      /* Use coalesced events for smoother erasing on iPad */
+      const evts=e.getCoalescedEvents?e.getCoalescedEvents():[];const pts=evts.length>1?evts.map(ce=>{const t=ce.touches?ce.touches[0]:ce;const r=rectCache.current;return{x:(t.clientX-r.left)/r.width*PW,y:(t.clientY-r.top)/r.height*PH};}):[pos];
+      let lp=lastPoint.current;for(const p of pts){const dx=p.x-lp.x,dy=p.y-lp.y,d=Math.sqrt(dx*dx+dy*dy),st=Math.max(1,Math.floor(d/2));for(let i=0;i<=st;i++){const t=i/st;ctx.beginPath();ctx.arc(lp.x+dx*t,lp.y+dy*t,eraserSize,0,Math.PI*2);ctx.fill();}lp=p;}ctx.restore();}
+    else if(tool===T.PEN){const ctx=canvasRef.current.getContext("2d");ctx.save();
+      /* Use coalesced events for smoother pen strokes on iPad */
+      const evts=e.getCoalescedEvents?e.getCoalescedEvents():[];const pts=evts.length>1?evts.map(ce=>{const t=ce.touches?ce.touches[0]:ce;const r=rectCache.current;return{x:(t.clientX-r.left)/r.width*PW,y:(t.clientY-r.top)/r.height*PH,pressure:ce.pressure||pv};}):[pos];
+      let lp=lastPoint.current;for(const p of pts){drawSeg(ctx,lp,p,color,brushSize,p.pressure||pv);pathPts.current.push(p);lp=p;}ctx.restore();}
     else if(tool===T.HIGHLIGHTER){pathPts.current.push(pos);const o=overlayRef.current,octx=o.getContext("2d");octx.clearRect(0,0,PW,PH);octx.save();octx.globalAlpha=.3;drawPath(octx,pathPts.current,color,brushSize*3);octx.restore();}
     lastPoint.current=pos;
   };
@@ -200,7 +227,7 @@ export default function NoteApp({onHome}) {
     if(!isDrawing)return;
     if([T.LINE,T.ARROW,T.RECT,T.DIAMOND,T.CIRCLE].includes(tool)&&shapeStart){const pos=getPos(e),ctx=canvasRef.current.getContext("2d");overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);ctx.save();if(tool===T.LINE){ctx.strokeStyle=color;ctx.lineWidth=brushSize;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(shapeStart.x,shapeStart.y);ctx.lineTo(pos.x,pos.y);ctx.stroke();}else if(tool===T.ARROW)drawArrow(ctx,shapeStart.x,shapeStart.y,pos.x,pos.y,color,brushSize);else if(tool===T.RECT){ctx.strokeStyle=color;ctx.lineWidth=brushSize;ctx.lineCap="round";ctx.strokeRect(shapeStart.x,shapeStart.y,pos.x-shapeStart.x,pos.y-shapeStart.y);}else if(tool===T.DIAMOND)drawDiamond(ctx,shapeStart.x,shapeStart.y,pos.x-shapeStart.x,pos.y-shapeStart.y,color,brushSize);else if(tool===T.CIRCLE){const rx=Math.abs(pos.x-shapeStart.x)/2,ry=Math.abs(pos.y-shapeStart.y)/2;ctx.strokeStyle=color;ctx.lineWidth=brushSize;ctx.lineCap="round";ctx.beginPath();ctx.ellipse(shapeStart.x+(pos.x-shapeStart.x)/2,shapeStart.y+(pos.y-shapeStart.y)/2,rx,ry,0,0,Math.PI*2);ctx.stroke();}ctx.restore();setShapeStart(null);}
     if(tool===T.HIGHLIGHTER&&pathPts.current.length>1){const ctx=canvasRef.current.getContext("2d");ctx.save();ctx.globalAlpha=.3;drawPath(ctx,pathPts.current,color,brushSize*3);ctx.restore();overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);}
-    setIsDrawing(false);lastPoint.current=null;pathPts.current=[];saveHist();
+    setIsDrawing(false);lastPoint.current=null;pathPts.current=[];autoPageFlag.current=false;saveHist();
   };
 
   /* Zoom: Ctrl+Wheel */
@@ -247,8 +274,13 @@ export default function NoteApp({onHome}) {
 
   /* ═══════ RENDER ═══════ */
   return (
-    <div style={{width:"100vw",height:"100vh",display:"flex",flexDirection:"column",background:th.bg,fontFamily:'"DM Sans",system-ui,sans-serif',overflow:"hidden",userSelect:"none"}}>
+    <div style={{width:"100vw",height:"100vh",display:"flex",flexDirection:"column",background:th.bg,fontFamily:'"DM Sans",system-ui,sans-serif',overflow:"hidden",userSelect:"none",WebkitUserSelect:"none",WebkitTouchCallout:"none",WebkitTextSizeAdjust:"100%"}}>
       <link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+      <style>{`
+        *{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important;-webkit-tap-highlight-color:transparent!important}
+        textarea,input{-webkit-user-select:text!important;user-select:text!important}
+        canvas{touch-action:none}
+      `}</style>
       {/* Upload Modal */}
       {showUploadModal&&<div style={{position:"fixed",inset:0,background:dark?"rgba(0,0,0,.6)":"rgba(44,36,24,.3)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(12px)"}} onClick={()=>setShowUploadModal(false)}><div onClick={e=>e.stopPropagation()} style={{background:th.surface,borderRadius:"24px",padding:"40px",maxWidth:"380px",width:"90%",boxShadow:th.shadowLg,textAlign:"center",border:`1px solid ${th.border}`}}><div style={{width:"52px",height:"52px",borderRadius:"16px",background:th.accentGrad,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 18px",color:"#fff"}}>{I.upload}</div><h2 style={{margin:"0 0 6px",fontSize:"18px",color:th.text,fontWeight:700,fontFamily:'"Literata",Georgia,serif'}}>Restore Notes</h2><p style={{margin:"0 0 24px",fontSize:"13px",color:th.textSecondary}}>Upload a .json backup</p><input ref={fileRef} type="file" accept=".json" onChange={handleUpload} style={{display:"none"}}/><button onClick={()=>fileRef.current?.click()} style={{width:"100%",padding:"14px",borderRadius:"14px",border:`2px dashed ${th.border}`,background:th.surfaceHover,cursor:"pointer",fontSize:"13px",fontWeight:600,color:th.text,marginBottom:"10px",fontFamily:"inherit"}}>Choose File</button><button onClick={()=>setShowUploadModal(false)} style={{width:"100%",padding:"10px",borderRadius:"14px",border:"none",background:"transparent",cursor:"pointer",fontSize:"13px",color:th.textMuted}}>Cancel</button></div></div>}
       {/* Email Modal */}
@@ -295,14 +327,14 @@ export default function NoteApp({onHome}) {
         </div>}
 
         {/* ═══ SCROLLABLE PAGE STACK ═══ */}
-        <div ref={scrollRef} onPointerDown={handleDown} onPointerMove={handleMove} onPointerUp={handleUp} onPointerLeave={handleUp} onPointerCancel={handleUp} style={{flex:1,overflow:"auto",cursor:getCursor(),background:dark?"#0e0c0a":th.bg,position:"relative",touchAction:"none"}}>
+        <div ref={scrollRef} onPointerDown={handleDown} onPointerMove={handleMove} onPointerUp={handleUp} onPointerLeave={handleUp} onPointerCancel={handleUp} style={{flex:1,overflow:"auto",cursor:getCursor(),background:dark?"#0e0c0a":th.bg,position:"relative",touchAction:penActive?"none":"pan-x pan-y",WebkitOverflowScrolling:"touch"}}>
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:`${PAGE_PAD}px`,minWidth:dW>baseW?`${dW+PAGE_PAD*2}px`:undefined,paddingTop:`${compact?100:60}px`,paddingBottom:"200px"}}>
             {pages.map((pg,idx)=>(
               <div key={pg.id}>
                 {/* Page break divider */}
                 {idx>0&&<div style={{display:"flex",alignItems:"center",gap:"12px",padding:`${PAGE_GAP/2}px 0`,width:dW+"px",maxWidth:"100%",userSelect:"none"}}><div style={{flex:1,height:"1px",background:th.border,opacity:.5}}/><span style={{fontSize:"10px",fontWeight:700,color:th.textMuted,letterSpacing:"1.5px",textTransform:"uppercase",whiteSpace:"nowrap"}}>Page {idx+1}</span><div style={{flex:1,height:"1px",background:th.border,opacity:.5}}/></div>}
                 {/* Page */}
-                <div style={{width:dW+"px",height:dH+"px",position:"relative",borderRadius:Math.max(4,8*zoom)+"px",overflow:"hidden",boxShadow:th.pageShadow,background:"#fff"}}>
+                <div style={{width:dW+"px",height:dH+"px",position:"relative",borderRadius:Math.max(4,8*zoom)+"px",overflow:"hidden",boxShadow:th.pageShadow,background:"#fff",touchAction:"none"}}>
                   <div style={{width:"100%",height:"100%",filter:dark?"invert(1) hue-rotate(180deg)":"none"}}>
                     <canvas ref={el=>initC(el,pg.id)} style={{width:"100%",height:"100%",display:"block"}}/>
                     <canvas ref={el=>initO(el,pg.id)} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",pointerEvents:"none"}}/>
