@@ -37,7 +37,7 @@ export default function NoteApp({onHome}) {
   const isPanning=useRef(false),panStart=useRef({x:0,y:0}),spaceHeld=useRef(false);
   const lastPoint=useRef(null),pathPts=useRef([]),inactTimer=useRef(null),lastBackup=useRef(null);
   const fileRef=useRef(null),renameRef=useRef(null),penDet=useRef(false),penTO=useRef(null);
-  const autoPageFlag=useRef(false),dirtyPages=useRef(new Set()),pinchRef=useRef(null);
+  const autoPageFlag=useRef(false),dirtyPages=useRef(new Set()),pinchRef=useRef(null),touchGesture=useRef(null);
   const rectCache=useRef(null),rectFrame=useRef(0);
   const zoomRef=useRef(1);
   /* FIX: pageData keyed by PAGE ID, not index */
@@ -135,7 +135,9 @@ export default function NoteApp({onHome}) {
     if(e.pointerType==="touch"&&penDet.current){if(e.width>20||e.height>20)return;if(e.pressure>0&&e.pressure<0.05)return;if(isDrawing.current)return;isPanning.current=true;panStart.current={x:e.clientX,y:e.clientY};return;}
     if(isPalm(e))return;rectCache.current=null;
     if(shouldPan()){isPanning.current=true;panStart.current={x:e.clientX,y:e.clientY};return;}
-    const pi=getPageAtPt(e);if(pi===-1)return;
+    const pi=getPageAtPt(e);
+    /* Touch outside canvas (padding/gaps) = scroll */
+    if(pi===-1){if(e.pointerType==="touch"){isPanning.current=true;panStart.current={x:e.clientX,y:e.clientY};}return;}
     if(pi!==currentPage)activatePage(pi);
     const c=cMap.current.get(pages[pi].id);const o=oMap.current.get(pages[pi].id);
     canvasRef.current=c;overlayRef.current=o;
@@ -146,9 +148,16 @@ export default function NoteApp({onHome}) {
     if([T.LINE,T.ARROW,T.RECT,T.DIAMOND,T.CIRCLE].includes(tool)){shapeStart.current=pos;isDrawing.current=true;return;}
     isDrawing.current=true;lastPoint.current=pos;pathPts.current=[pos];
     if(tool===T.ERASER){const ctx=c.getContext("2d");ctx.save();ctx.fillStyle="#ffffff";ctx.beginPath();ctx.arc(pos.x,pos.y,eraserSize,0,Math.PI*2);ctx.fill();ctx.restore();}
+    /* Track gesture for scroll-vs-draw detection on mobile (no pen detected) */
+    if(e.pointerType==="touch"&&!penDet.current)touchGesture.current={x:e.clientX,y:e.clientY};
   };
 
-  const handleMove=(e)=>{e.preventDefault();if(pinchRef.current)return;if(!isDrawing.current&&!isPanning.current&&isPalm(e))return;
+  const handleMove=(e)=>{e.preventDefault();if(pinchRef.current)return;
+    /* Scroll-vs-draw detection: if first ~10px is a vertical swipe, cancel draw → scroll */
+    if(touchGesture.current&&isDrawing.current){const dx=e.clientX-touchGesture.current.x,dy=e.clientY-touchGesture.current.y,adx=Math.abs(dx),ady=Math.abs(dy);
+      if(ady>10&&ady>adx*1.5){isDrawing.current=false;lastPoint.current=null;pathPts.current=[];shapeStart.current=null;overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);if(historyIndex>=0&&history[historyIndex])restoreImg(history[historyIndex]);isPanning.current=true;panStart.current={x:e.clientX,y:e.clientY};touchGesture.current=null;return;}
+      if(adx+ady>15)touchGesture.current=null;}
+    if(!isDrawing.current&&!isPanning.current&&isPalm(e))return;
     if(isPanning.current){const el=scrollRef.current;el.scrollLeft-=(e.clientX-panStart.current.x);el.scrollTop-=(e.clientY-panStart.current.y);panStart.current={x:e.clientX,y:e.clientY};return;}
     const pos=getPos(e);
     /* Auto-create page near bottom of last page — debounced */
@@ -172,6 +181,7 @@ export default function NoteApp({onHome}) {
   };
 
   const handleUp=(e)=>{
+    touchGesture.current=null;
     if(isPanning.current){isPanning.current=false;return;}
     if(tool===T.SELECT&&isDraggingSel){setIsDraggingSel(false);lastPoint.current=null;return;}
     if(tool===T.SELECT&&isDrawing.current&&selStart){const pos=getPos(e),x=Math.min(selStart.x,pos.x),y=Math.min(selStart.y,pos.y),w=Math.abs(pos.x-selStart.x),h=Math.abs(pos.y-selStart.y);if(w>5&&h>5){const c=canvasRef.current,ctx=c.getContext("2d"),dpr=Math.min(window.devicePixelRatio||1,2);const id=ctx.getImageData(x*dpr,y*dpr,w*dpr,h*dpr);selSnap.current=c.toDataURL();ctx.fillStyle="#ffffff";ctx.fillRect(x,y,w,h);selSnap.current=c.toDataURL();setSelection({x,y,w,h,imageData:id});const tc=document.createElement("canvas");tc.width=id.width;tc.height=id.height;tc.getContext("2d").putImageData(id,0,0);ctx.drawImage(tc,x,y,w,h);const o=overlayRef.current,octx=o.getContext("2d");octx.clearRect(0,0,PW,PH);octx.save();octx.setLineDash([6,4]);octx.strokeStyle=th.accent;octx.lineWidth=2;octx.strokeRect(x,y,w,h);octx.restore();}else overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);setSelStart(null);isDrawing.current=false;return;}
