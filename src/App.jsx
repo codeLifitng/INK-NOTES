@@ -37,7 +37,7 @@ export default function NoteApp({onHome}) {
   const isPanning=useRef(false),panStart=useRef({x:0,y:0}),spaceHeld=useRef(false);
   const lastPoint=useRef(null),pathPts=useRef([]),inactTimer=useRef(null),lastBackup=useRef(null);
   const fileRef=useRef(null),renameRef=useRef(null),penDet=useRef(false),penTO=useRef(null);
-  const autoPageFlag=useRef(false),dirtyPages=useRef(new Set()),pinchRef=useRef(null),touchGesture=useRef(null);
+  const autoPageFlag=useRef(false),dirtyPages=useRef(new Set()),pinchRef=useRef(null);
   const rectCache=useRef(null),rectFrame=useRef(0);
   const zoomRef=useRef(1);
   /* FIX: pageData keyed by PAGE ID, not index */
@@ -101,7 +101,7 @@ export default function NoteApp({onHome}) {
   /* ═══ Coordinates ═══ */
   const getPageAtPt=(e)=>{for(let i=0;i<pages.length;i++){const c=cMap.current.get(pages[i].id);if(!c)continue;const r=c.getBoundingClientRect();if(e.clientY>=r.top&&e.clientY<=r.bottom&&e.clientX>=r.left&&e.clientX<=r.right)return i;}return-1;};
   const getPos=(e)=>{const c=canvasRef.current;if(!c)return{x:0,y:0,pressure:.5};const now=performance.now();if(!rectCache.current||now-rectFrame.current>100){rectCache.current=c.getBoundingClientRect();rectFrame.current=now;}const r=rectCache.current;const t=e.touches?e.touches[0]:e;return{x:(t.clientX-r.left)/r.width*PW,y:(t.clientY-r.top)/r.height*PH,pressure:e.pressure??.5};};
-  const isPalm=(e)=>{if(e.pointerType==="pen"){if(!penDet.current){penDet.current=true;setPenActive(true);}if(penTO.current)clearTimeout(penTO.current);penTO.current=setTimeout(()=>{penDet.current=false;setPenActive(false);},5000);return false;}if(e.pointerType==="touch"&&penDet.current)return true;if(e.pointerType==="touch"&&(e.width>20||e.height>20))return true;if(e.pointerType==="touch"&&e.pressure>0&&e.pressure<0.05)return true;return false;};
+  const isPalm=(e)=>{if(e.pointerType==="pen"){if(!penDet.current){penDet.current=true;setPenActive(true);}if(penTO.current)clearTimeout(penTO.current);penTO.current=setTimeout(()=>{penDet.current=false;setPenActive(false);},5000);return false;}if(!penDet.current)return false;if(e.pointerType==="touch")return true;return false;};
   const shouldPan=()=>tool===T.HAND||spaceHeld.current;
 
   /* ═══ History ═══ */
@@ -145,19 +145,12 @@ export default function NoteApp({onHome}) {
     if(tool===T.SELECT){if(selection&&inSel(pos)){setIsDraggingSel(true);lastPoint.current=pos;return;}if(selection)commitSel();setSelStart(pos);isDrawing.current=true;return;}
     if(selection)commitSel();
     if(tool===T.TEXT){setTextInputs(p=>[...p,{id:Date.now(),x:pos.x,y:pos.y,text:"",color,fontSize}]);setEditingText(Date.now());return;}
-    /* Mobile touch (no pen): delay draw to detect scroll-vs-draw gesture */
-    if(e.pointerType==="touch"&&!penDet.current){touchGesture.current={x:e.clientX,y:e.clientY};return;}
     if([T.LINE,T.ARROW,T.RECT,T.DIAMOND,T.CIRCLE].includes(tool)){shapeStart.current=pos;isDrawing.current=true;return;}
     isDrawing.current=true;lastPoint.current=pos;pathPts.current=[pos];
     if(tool===T.ERASER){const ctx=c.getContext("2d");ctx.save();ctx.fillStyle="#ffffff";ctx.beginPath();ctx.arc(pos.x,pos.y,eraserSize,0,Math.PI*2);ctx.fill();ctx.restore();}
   };
 
   const handleMove=(e)=>{e.preventDefault();if(pinchRef.current)return;
-    /* Pending touch gesture: decide scroll vs draw BEFORE any marks are made */
-    if(touchGesture.current&&!isDrawing.current&&!isPanning.current){const dx=e.clientX-touchGesture.current.x,dy=e.clientY-touchGesture.current.y,adx=Math.abs(dx),ady=Math.abs(dy);
-      if(ady>12&&ady>adx*1.3){isPanning.current=true;panStart.current={x:e.clientX,y:e.clientY};touchGesture.current=null;return;}
-      if(adx+ady>8){const pos=getPos(e);if([T.LINE,T.ARROW,T.RECT,T.DIAMOND,T.CIRCLE].includes(tool))shapeStart.current=pos;else{lastPoint.current=pos;pathPts.current=[pos];if(tool===T.ERASER){const ctx=canvasRef.current.getContext("2d");ctx.save();ctx.fillStyle="#ffffff";ctx.beginPath();ctx.arc(pos.x,pos.y,eraserSize,0,Math.PI*2);ctx.fill();ctx.restore();}}isDrawing.current=true;touchGesture.current=null;}
-      else return;}
     if(!isDrawing.current&&!isPanning.current&&isPalm(e))return;
     if(isPanning.current){const el=scrollRef.current;el.scrollLeft-=(e.clientX-panStart.current.x);el.scrollTop-=(e.clientY-panStart.current.y);panStart.current={x:e.clientX,y:e.clientY};return;}
     const pos=getPos(e);
@@ -182,7 +175,6 @@ export default function NoteApp({onHome}) {
   };
 
   const handleUp=(e)=>{
-    touchGesture.current=null;
     if(isPanning.current){isPanning.current=false;return;}
     if(tool===T.SELECT&&isDraggingSel){setIsDraggingSel(false);lastPoint.current=null;return;}
     if(tool===T.SELECT&&isDrawing.current&&selStart){const pos=getPos(e),x=Math.min(selStart.x,pos.x),y=Math.min(selStart.y,pos.y),w=Math.abs(pos.x-selStart.x),h=Math.abs(pos.y-selStart.y);if(w>5&&h>5){const c=canvasRef.current,ctx=c.getContext("2d"),dpr=Math.min(window.devicePixelRatio||1,2);const id=ctx.getImageData(x*dpr,y*dpr,w*dpr,h*dpr);selSnap.current=c.toDataURL();ctx.fillStyle="#ffffff";ctx.fillRect(x,y,w,h);selSnap.current=c.toDataURL();setSelection({x,y,w,h,imageData:id});const tc=document.createElement("canvas");tc.width=id.width;tc.height=id.height;tc.getContext("2d").putImageData(id,0,0);ctx.drawImage(tc,x,y,w,h);const o=overlayRef.current,octx=o.getContext("2d");octx.clearRect(0,0,PW,PH);octx.save();octx.setLineDash([6,4]);octx.strokeStyle=th.accent;octx.lineWidth=2;octx.strokeRect(x,y,w,h);octx.restore();}else overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);setSelStart(null);isDrawing.current=false;return;}
@@ -198,7 +190,7 @@ export default function NoteApp({onHome}) {
   /* Pinch zoom + two-finger scroll (iPad) */
   useEffect(()=>{const el=scrollRef.current;if(!el)return;
     const onTS=(e)=>{if(e.touches.length<2)return;e.preventDefault();
-      if(isDrawing.current){isDrawing.current=false;lastPoint.current=null;pathPts.current=[];overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);}
+      if(isDrawing.current){isDrawing.current=false;lastPoint.current=null;pathPts.current=[];shapeStart.current=null;overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);if(historyIndex>=0&&history[historyIndex])restoreImg(history[historyIndex]);}
       isPanning.current=false;
       const t1=e.touches[0],t2=e.touches[1];const dist=Math.hypot(t2.clientX-t1.clientX,t2.clientY-t1.clientY);
       const cx=(t1.clientX+t2.clientX)/2,cy=(t1.clientY+t2.clientY)/2;const r=el.getBoundingClientRect();
