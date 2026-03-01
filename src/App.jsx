@@ -72,10 +72,11 @@ const I = {
   trash: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>,
   mail: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>,
   send: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
+  home: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
 };
 
 /* ══════════════ App ══════════════ */
-export default function NoteApp() {
+export default function NoteApp({ onHome }) {
   const canvasRef = useRef(null);
   const overlayRef = useRef(null);
   const containerRef = useRef(null);
@@ -437,6 +438,12 @@ export default function NoteApp() {
         <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{ ...s.btn(sidebarOpen), background: sidebarOpen ? th.accent : th.toolbar, backdropFilter: "blur(12px)", boxShadow: th.shadow, border: `1px solid ${th.toolbarBorder}`, color: sidebarOpen ? "#fff" : th.text }}>
           {I.menu}
         </button>
+
+        {onHome && (
+          <button onClick={onHome} title="Back to home" style={{ ...s.btn(false), background: th.toolbar, backdropFilter: "blur(12px)", boxShadow: th.shadow, border: `1px solid ${th.toolbarBorder}`, color: th.text }}>
+            {I.home}
+          </button>
+        )}
 
         <div style={{ display: "flex", alignItems: "center", gap: "2px", background: th.toolbar, backdropFilter: "blur(12px)", borderRadius: "14px", padding: compact ? "2px" : "4px", border: `1px solid ${th.toolbarBorder}`, boxShadow: th.shadow, overflowX: "auto", maxWidth: compact ? "calc(100vw - 160px)" : "none" }}>
           {toolItems.map((item, i) => item === null ? <div key={i} style={s.sep} /> : (
