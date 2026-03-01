@@ -4,16 +4,16 @@ import Landing from './Landing'
 
 export default function Router() {
   const [showNotes, setShowNotes] = useState(() => {
-    return localStorage.getItem('ink_notes_skip_landing') === 'true'
+    return sessionStorage.getItem('ink_notes_in_app') === 'true'
   })
 
   const handleStartNotes = () => {
-    localStorage.setItem('ink_notes_skip_landing', 'true')
+    sessionStorage.setItem('ink_notes_in_app', 'true')
     setShowNotes(true)
   }
 
   const handleBackHome = () => {
-    localStorage.removeItem('ink_notes_skip_landing')
+    sessionStorage.removeItem('ink_notes_in_app')
     setShowNotes(false)
   }
 
