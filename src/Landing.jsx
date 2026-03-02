@@ -356,130 +356,150 @@ export default function Landing({ onStart }) {
         <p className="section-sub reveal" data-reveal="up" data-delay="2">Everything runs inside your browser. Zero servers. Zero cloud. Just you.</p>
 
         <div className="arch-diagram reveal" data-reveal="scale">
+
           {/* ── Crossed-out cloud ── */}
-          <div className="arch-node arch-cloud reveal" data-reveal="scale">
-            <div className="arch-cloud-slash" />
-            <div className="arch-cloud-icon">☁️</div>
-            <div className="arch-cloud-label">Cloud / Server</div>
+          <div className="arch-cloud-group">
+            <div className="arch-node arch-cloud reveal" data-reveal="scale">
+              <div className="arch-cloud-slash" />
+              <div className="arch-cloud-icon">☁️</div>
+              <div className="arch-cloud-label">Cloud / Server</div>
+            </div>
+            <div className="arch-connector red">
+              <svg width="2" height="36" viewBox="0 0 2 36"><line x1="1" y1="0" x2="1" y2="36" stroke="var(--red)" strokeWidth="1.5" strokeDasharray="4 4" opacity="0.4" /></svg>
+              <span className="arch-conn-tag red">✕ NO CONNECTION</span>
+            </div>
           </div>
-          <div className="arch-no-conn">✕ NO CONNECTION</div>
 
-          {/* ── Main browser boundary ── */}
-          <div className="arch-browser-wrap reveal" data-reveal="up" data-delay="1">
-            <div className="arch-browser-badge">YOUR DEVICE</div>
+          {/* ── Main device boundary ── */}
+          <div className="arch-device reveal" data-reveal="up" data-delay="1">
+            <div className="arch-device-badge">YOUR DEVICE</div>
+            <div className="arch-device-inner">
 
-            {/* Row 1: User Input */}
-            <div className="arch-flow-label reveal" data-reveal="up" data-delay="2">
-              <span className="arch-flow-dot input" />You draw, type, create
-            </div>
-
-            {/* Row 2: Engine modules */}
-            <div className="arch-sub-row">
-              <div className="arch-module reveal" data-reveal="scale" data-delay="2">
-                <div className="arch-module-icon">🎨</div>
-                <div className="arch-module-name">Canvas Engine</div>
-                <div className="arch-module-desc">Pressure-sensitive ink</div>
-              </div>
-              <div className="arch-module reveal" data-reveal="scale" data-delay="2">
-                <div className="arch-module-icon">✏️</div>
-                <div className="arch-module-name">Text Editor</div>
-                <div className="arch-module-desc">WYSIWYG overlays</div>
-              </div>
-              <div className="arch-module reveal" data-reveal="scale" data-delay="3">
-                <div className="arch-module-icon">◇</div>
-                <div className="arch-module-name">Vector Shapes</div>
-                <div className="arch-module-desc">SVG rendering</div>
-              </div>
-            </div>
-
-            {/* Animated flow line down */}
-            <div className="arch-flow-pipe">
-              <div className="arch-flow-particle" />
-              <div className="arch-flow-particle delay2" />
-            </div>
-            <div className="arch-flow-label reveal" data-reveal="up" data-delay="3">
-              <span className="arch-flow-dot save" />Auto-save every 10s
-            </div>
-
-            {/* Row 3: Storage layer */}
-            <div className="arch-storage-row">
-              <div className="arch-node arch-db reveal" data-reveal="scale" data-delay="3">
-                <div className="arch-db-badge">LOCAL STORAGE</div>
-                <div className="arch-db-icon">💾</div>
-                <div className="arch-db-label">IndexedDB</div>
-                <div className="arch-db-sub">Pages, drawings, shapes, text — all stored in your browser</div>
-                <div className="arch-db-details">
-                  <span className="arch-db-tag">Canvas pixels</span>
-                  <span className="arch-db-tag">Text overlays</span>
-                  <span className="arch-db-tag">Vector shapes</span>
-                  <span className="arch-db-tag">Page structure</span>
-                  <span className="arch-db-tag">Settings</span>
+              {/* Step 1: User input */}
+              <div className="arch-step">
+                <div className="arch-step-header reveal" data-reveal="up" data-delay="2">
+                  <span className="arch-pulse blue" />
+                  <span className="arch-step-label">You draw, type, create</span>
+                </div>
+                <div className="arch-modules">
+                  <div className="arch-module reveal" data-reveal="scale" data-delay="2">
+                    <div className="arch-module-icon">🎨</div>
+                    <div className="arch-module-name">Canvas Engine</div>
+                    <div className="arch-module-desc">Pressure-sensitive ink</div>
+                  </div>
+                  <div className="arch-module reveal" data-reveal="scale" data-delay="2">
+                    <div className="arch-module-icon">✏️</div>
+                    <div className="arch-module-name">Text Editor</div>
+                    <div className="arch-module-desc">WYSIWYG overlays</div>
+                  </div>
+                  <div className="arch-module reveal" data-reveal="scale" data-delay="3">
+                    <div className="arch-module-icon">◇</div>
+                    <div className="arch-module-name">Vector Shapes</div>
+                    <div className="arch-module-desc">SVG rendering</div>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Flow to outputs */}
-            <div className="arch-flow-pipe short">
-              <div className="arch-flow-particle green" />
-            </div>
+              {/* Connector: modules → storage */}
+              <div className="arch-connector blue">
+                <svg width="2" height="48" viewBox="0 0 2 48">
+                  <line x1="1" y1="0" x2="1" y2="48" stroke="var(--accent)" strokeWidth="1.5" opacity="0.25" />
+                </svg>
+                <div className="arch-conn-particle blue"><div /><div /></div>
+                <span className="arch-conn-tag gold">Auto-save every 10s</span>
+              </div>
 
-            {/* Row 4: Output options */}
-            <div className="arch-output-row">
-              <div className="arch-output reveal" data-reveal="up" data-delay="4">
-                <div className="arch-output-icon">📥</div>
-                <div className="arch-output-name">JSON Backup</div>
-                <div className="arch-output-desc">Download to your device</div>
+              {/* Step 2: Local storage */}
+              <div className="arch-step">
+                <div className="arch-db reveal" data-reveal="scale" data-delay="3">
+                  <div className="arch-db-header">
+                    <span className="arch-pulse green" />
+                    <span className="arch-db-title">IndexedDB</span>
+                    <span className="arch-db-pill">LOCAL STORAGE</span>
+                  </div>
+                  <div className="arch-db-sub">All data stays in your browser — nothing is ever sent anywhere</div>
+                  <div className="arch-db-tags">
+                    <span>Canvas pixels</span>
+                    <span>Text overlays</span>
+                    <span>Vector shapes</span>
+                    <span>Page structure</span>
+                    <span>Settings</span>
+                  </div>
+                </div>
               </div>
-              <div className="arch-output reveal" data-reveal="up" data-delay="4">
-                <div className="arch-output-icon">🖼️</div>
-                <div className="arch-output-name">PNG Export</div>
-                <div className="arch-output-desc">Save as image</div>
+
+              {/* Connector: storage → outputs */}
+              <div className="arch-connector green">
+                <svg width="2" height="36" viewBox="0 0 2 36">
+                  <line x1="1" y1="0" x2="1" y2="36" stroke="var(--green)" strokeWidth="1.5" opacity="0.25" />
+                </svg>
+                <div className="arch-conn-particle green"><div /></div>
               </div>
-              <div className="arch-output reveal" data-reveal="up" data-delay="5">
-                <div className="arch-output-icon">📧</div>
-                <div className="arch-output-name">Email Share</div>
-                <div className="arch-output-desc">Via your mail client</div>
+
+              {/* Step 3: Output options */}
+              <div className="arch-step">
+                <div className="arch-step-header reveal" data-reveal="up" data-delay="4">
+                  <span className="arch-pulse gold" />
+                  <span className="arch-step-label">Export & share</span>
+                </div>
+                <div className="arch-outputs">
+                  <div className="arch-output reveal" data-reveal="up" data-delay="4">
+                    <span className="arch-output-icon">📥</span>
+                    <span className="arch-output-name">JSON Backup</span>
+                  </div>
+                  <div className="arch-output reveal" data-reveal="up" data-delay="4">
+                    <span className="arch-output-icon">🖼️</span>
+                    <span className="arch-output-name">PNG Export</span>
+                  </div>
+                  <div className="arch-output reveal" data-reveal="up" data-delay="5">
+                    <span className="arch-output-icon">📧</span>
+                    <span className="arch-output-name">Email Share</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
           {/* ── P2P Section ── */}
-          <div className="arch-flow-label p2p reveal" data-reveal="up" data-delay="4">
-            <span className="arch-flow-dot p2p" />Direct peer-to-peer · No middleman
+          <div className="arch-connector green" style={{marginTop:8}}>
+            <svg width="2" height="36" viewBox="0 0 2 36">
+              <line x1="1" y1="0" x2="1" y2="36" stroke="var(--green)" strokeWidth="1.5" opacity="0.25" />
+            </svg>
+            <span className="arch-conn-tag green">Direct P2P · No middleman</span>
           </div>
-          <div className="arch-p2p-row">
-            <div className="arch-node arch-peer reveal" data-reveal="up" data-delay="5">
+          <div className="arch-p2p reveal" data-reveal="up" data-delay="5">
+            <div className="arch-peer">
               <div className="arch-peer-icon">💻</div>
-              <div className="arch-peer-label">You</div>
+              <div className="arch-peer-name">You</div>
               <div className="arch-peer-sub">Browser A</div>
             </div>
             <div className="arch-p2p-bridge">
-              <svg className="arch-p2p-svg" viewBox="0 0 120 40" fill="none">
-                <path className="arch-p2p-path" d="M0 20 Q60 -10 120 20" stroke="var(--green)" strokeWidth="2" strokeDasharray="6 4" fill="none" />
-                <path className="arch-p2p-path-glow" d="M0 20 Q60 -10 120 20" stroke="var(--green)" strokeWidth="2" fill="none" strokeDasharray="6 4" />
-                <circle className="arch-p2p-dot" r="3" fill="var(--green)">
-                  <animateMotion dur="2s" repeatCount="indefinite" path="M0 20 Q60 -10 120 20" />
+              <svg className="arch-p2p-svg" viewBox="0 0 140 44" fill="none">
+                <path d="M6 22 Q70 -8 134 22" stroke="var(--green)" strokeWidth="1.5" strokeDasharray="6 4" opacity="0.3" fill="none" />
+                <path d="M6 22 Q70 -8 134 22" stroke="var(--green)" strokeWidth="1.5" fill="none" strokeDasharray="6 4" opacity="0" className="arch-p2p-glow" />
+                <circle r="3" fill="var(--green)" className="arch-p2p-dot">
+                  <animateMotion dur="2.2s" repeatCount="indefinite" path="M6 22 Q70 -8 134 22" />
                 </circle>
-                <circle className="arch-p2p-dot" r="3" fill="var(--green)">
-                  <animateMotion dur="2s" repeatCount="indefinite" path="M120 20 Q60 -10 0 20" />
+                <circle r="3" fill="var(--green)" className="arch-p2p-dot">
+                  <animateMotion dur="2.2s" repeatCount="indefinite" path="M134 22 Q70 -8 6 22" />
                 </circle>
               </svg>
-              <div className="arch-p2p-tag">WebRTC</div>
+              <span className="arch-p2p-tag">WebRTC</span>
             </div>
-            <div className="arch-node arch-peer reveal" data-reveal="up" data-delay="5">
+            <div className="arch-peer">
               <div className="arch-peer-icon">💻</div>
-              <div className="arch-peer-label">Collaborator</div>
+              <div className="arch-peer-name">Collaborator</div>
               <div className="arch-peer-sub">Browser B</div>
             </div>
           </div>
 
           {/* ── Trust labels ── */}
-          <div className="arch-labels">
-            <div className="arch-label green">Zero Servers</div>
-            <div className="arch-label blue">Zero Cloud</div>
-            <div className="arch-label red">Zero Tracking</div>
-            <div className="arch-label gold">Zero Cost</div>
-            <div className="arch-label green">100% Local</div>
+          <div className="arch-trust">
+            <span className="arch-trust-pill green">Zero Servers</span>
+            <span className="arch-trust-pill blue">Zero Cloud</span>
+            <span className="arch-trust-pill red">Zero Tracking</span>
+            <span className="arch-trust-pill gold">Zero Cost</span>
+            <span className="arch-trust-pill green">100% Local</span>
           </div>
         </div>
       </section>
