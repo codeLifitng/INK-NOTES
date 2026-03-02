@@ -418,7 +418,7 @@ export default function Landing({ onStart }) {
       {/* ═══════ FOOTER ═══════ */}
       <footer>
         <div className="brand">&#10022; Ink Notes</div>
-        <div className="credit">Your canvas for thinking freely</div>
+        <div className="credit">Built by <span>Nilay</span></div>
         <div className="footer-tagline">
           Your notes. Your device. Your rules. Always free. Always private.
         </div>

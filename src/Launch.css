@@ -1,0 +1,77 @@
+/* ── Launch Overlay ── */
+.launch-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: #08080a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: launch-fade 2s ease both;
+}
+
+@keyframes launch-fade {
+  0% { opacity: 0; }
+  15% { opacity: 1; }
+  75% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.launch-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+/* Pen icon — bounces in and tilts like writing */
+.launch-pen {
+  width: 48px;
+  height: 48px;
+  color: #4f8fff;
+  animation: pen-write 1.6s ease-in-out both;
+  filter: drop-shadow(0 0 20px rgba(79,143,255,0.4));
+}
+
+@keyframes pen-write {
+  0% { transform: translateY(-30px) rotate(-30deg); opacity: 0; }
+  20% { transform: translateY(0) rotate(-30deg); opacity: 1; }
+  30% { transform: rotate(-35deg); }
+  50% { transform: rotate(-25deg) translateX(10px); }
+  70% { transform: rotate(-35deg) translateX(20px); }
+  90% { transform: rotate(-25deg) translateX(30px); }
+  100% { transform: rotate(-30deg) translateX(30px); opacity: 1; }
+}
+
+/* Flowing line that draws itself */
+.launch-line {
+  width: min(360px, 70vw);
+  height: 50px;
+  color: #4f8fff;
+  overflow: visible;
+}
+
+.launch-stroke {
+  stroke-dasharray: 600;
+  stroke-dashoffset: 600;
+  animation: draw-line 1.4s ease-in-out 0.3s forwards;
+  filter: drop-shadow(0 0 8px rgba(79,143,255,0.3));
+}
+
+@keyframes draw-line {
+  to { stroke-dashoffset: 0; }
+}
+
+/* Text */
+.launch-text {
+  font-family: 'Space Mono', monospace;
+  font-size: 13px;
+  letter-spacing: 2px;
+  color: #5a5a6e;
+  animation: text-appear 0.6s ease 0.5s both;
+}
+
+@keyframes text-appear {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
