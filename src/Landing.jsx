@@ -203,7 +203,6 @@ export default function Landing({ onStart }) {
         <div className="hero-decor">
           <div className="blob blob-1" />
           <div className="blob blob-2" />
-          <div className="ring" />
           <div className="diamond" />
           <div className="dots" />
         </div>
@@ -266,7 +265,7 @@ export default function Landing({ onStart }) {
           </p>
         </div>
         <div className="roast-grid">
-          <div className="roast-card them reveal" data-reveal="clip-left">
+          <div className="roast-card them reveal" data-reveal="up">
             <div className="price">$9.99<span style={{ fontSize: '18px', color: 'var(--muted)' }}>/mo</span></div>
             <div className="card-label">Them — "Premium" notes</div>
             <ul>
@@ -281,7 +280,7 @@ export default function Landing({ onStart }) {
 
           <div className="vs-divider reveal" data-reveal="scale">VS</div>
 
-          <div className="roast-card us reveal" data-reveal="clip-left" data-delay="2">
+          <div className="roast-card us reveal" data-reveal="up" data-delay="2">
             <div className="price">$0<span style={{ fontSize: '18px', color: 'var(--muted)' }}> forever</span></div>
             <div className="card-label">Ink Notes</div>
             <ul>

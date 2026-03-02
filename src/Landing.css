@@ -261,17 +261,6 @@
 .hero-decor .blob-1 { width: 500px; height: 500px; top: -10%; left: -5%; }
 .hero-decor .blob-2 { width: 300px; height: 300px; bottom: 10%; right: -5%; background: var(--green); opacity: 0.04; filter: blur(60px); }
 
-.hero-decor .ring {
-  position: absolute;
-  width: 200px;
-  height: 200px;
-  border-radius: 50%;
-  border: 1px solid rgba(79,143,255,0.12);
-  top: 15%;
-  right: 10%;
-  animation: spin-slow 30s linear infinite;
-}
-
 .hero-decor .diamond {
   position: absolute;
   width: 24px;
@@ -1025,7 +1014,6 @@ footer .footer-tagline {
   .bento-card.bento-large,
   .bento-card.bento-wide { flex-direction: column; align-items: flex-start; }
 
-  .hero-decor .ring { display: none; }
   .hero-decor .dots { display: none; }
 
   .marquee-text { font-size: 13px; letter-spacing: 2px; padding: 0 20px; }
