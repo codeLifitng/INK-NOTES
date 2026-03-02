@@ -198,6 +198,26 @@ export default function Landing({ onStart }) {
   return (
     <div className="landing">
       <canvas ref={canvasRef} className="particle-canvas" />
+
+      {/* ═══════ CURSIVE WRITING BACKGROUND ═══════ */}
+      <div className="cursive-bg" aria-hidden="true">
+        <svg className="cursive-word cw-1" viewBox="0 0 300 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path className="cursive-path" d="M5 45 C10 10, 20 10, 25 40 C30 55, 35 15, 45 15 C50 15, 48 45, 55 45 C62 45, 58 15, 68 15 C73 15, 72 45, 78 45 C90 45, 80 10, 95 12 C105 14, 95 45, 108 42 C115 40, 112 12, 125 15 C132 17, 125 50, 140 42" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+        <svg className="cursive-word cw-2" viewBox="0 0 260 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path className="cursive-path" d="M5 40 C12 8, 22 8, 28 38 C32 52, 40 12, 50 14 C56 16, 52 44, 62 42 C72 40, 65 10, 80 12 C88 13, 82 45, 95 40 C108 35, 100 10, 115 14 C122 16, 118 44, 130 38" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+        <svg className="cursive-word cw-3" viewBox="0 0 340 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path className="cursive-path" d="M5 42 C15 8, 25 8, 30 35 C33 48, 42 12, 52 15 C58 17, 55 45, 65 42 C75 39, 70 8, 85 12 C92 14, 88 46, 100 40 C112 34, 105 8, 120 12 C128 14, 122 48, 138 42 C148 38, 142 10, 158 14 C165 16, 160 46, 175 40 C185 36, 178 8, 195 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+        <svg className="cursive-word cw-4" viewBox="0 0 280 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path className="cursive-path" d="M5 38 C12 10, 22 10, 28 36 C32 48, 38 14, 48 16 C55 18, 52 44, 62 40 C72 36, 68 10, 82 14 C90 16, 85 46, 98 40 C108 35, 102 12, 118 15 C126 17, 120 48, 135 42 C145 38, 140 10, 155 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+        <svg className="cursive-word cw-5" viewBox="0 0 220 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path className="cursive-path" d="M5 42 C14 10, 24 10, 30 38 C34 50, 42 14, 52 16 C58 18, 55 46, 65 42 C75 38, 70 10, 85 14 C92 16, 88 48, 102 40 C112 34, 108 12, 120 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </div>
+
       {/* ═══════ HERO ═══════ */}
       <section className="hero">
         <div className="hero-decor">

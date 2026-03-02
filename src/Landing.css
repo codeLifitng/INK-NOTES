@@ -72,7 +72,54 @@
   height: 100%;
 }
 
-.landing > *:not(.particle-canvas) { position: relative; z-index: 1; }
+.landing > *:not(.particle-canvas):not(.cursive-bg) { position: relative; z-index: 1; }
+
+/* ── Cursive Writing Background ── */
+.cursive-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  color: var(--accent);
+}
+
+.cursive-word {
+  position: absolute;
+  opacity: 0.06;
+  overflow: visible;
+}
+
+.cursive-path {
+  stroke-dasharray: 800;
+  stroke-dashoffset: 800;
+  animation: cursive-write 8s ease-in-out infinite;
+}
+
+/* Positions and timing — staggered so they write one after another */
+.cw-1 { width: 280px; top: 8%; left: 5%; transform: rotate(-8deg); }
+.cw-1 .cursive-path { animation-delay: 0s; animation-duration: 8s; }
+
+.cw-2 { width: 240px; top: 25%; right: 4%; transform: rotate(5deg); color: var(--green); }
+.cw-2 .cursive-path { animation-delay: 3s; animation-duration: 9s; }
+
+.cw-3 { width: 320px; top: 48%; left: 3%; transform: rotate(-4deg); color: var(--gold); }
+.cw-3 .cursive-path { animation-delay: 6s; animation-duration: 10s; }
+
+.cw-4 { width: 260px; top: 65%; right: 6%; transform: rotate(7deg); }
+.cw-4 .cursive-path { animation-delay: 9s; animation-duration: 8.5s; }
+
+.cw-5 { width: 200px; top: 82%; left: 8%; transform: rotate(-6deg); color: var(--green); }
+.cw-5 .cursive-path { animation-delay: 12s; animation-duration: 9.5s; }
+
+@keyframes cursive-write {
+  0% { stroke-dashoffset: 800; opacity: 0; }
+  3% { opacity: 1; }
+  45% { stroke-dashoffset: 0; opacity: 1; }
+  65% { stroke-dashoffset: 0; opacity: 0.4; }
+  75% { stroke-dashoffset: 0; opacity: 0; }
+  100% { stroke-dashoffset: 800; opacity: 0; }
+}
 
 ::selection { background: var(--accent); color: #fff; }
 
@@ -1031,4 +1078,5 @@ footer .footer-tagline {
   .marquee-track { animation: none; }
   .quotes-track { animation: none; }
   .particle-canvas { display: none; }
+  .cursive-bg { display: none; }
 }
