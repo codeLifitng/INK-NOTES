@@ -72,6 +72,9 @@ export default function NoteApp({onHome}) {
   const th=dark?themes.dark:themes.light;
   const blur="none",blurLg="none";
   const dW=baseW*zoom,dH=baseW*PH/PW*zoom;
+  /* Only show pages from the current page's folder in the canvas */
+  const curFolderId=pages[currentPage]?.folderId;
+  const visiblePages=pages.map((pg,i)=>({...pg,_idx:i})).filter(pg=>pg.folderId===curFolderId);
 
   /* Sync active canvas refs */
   useEffect(()=>{const pid=pages[currentPage]?.id;if(pid){canvasRef.current=cMap.current.get(pid);overlayRef.current=oMap.current.get(pid);}},[currentPage,pages]);
@@ -175,13 +178,14 @@ export default function NoteApp({onHome}) {
   };
 
   const handleMove=(e)=>{e.preventDefault();if(pinchRef.current)return;
+    /* Text drag — works with both SELECT and TEXT tools (must be before palm check) */
+    if(dragTextStart.current&&(tool===T.TEXT||tool===T.SELECT)){const ds=dragTextStart.current;const dx=(e.clientX-ds.x)/dW*PW;const dy=(e.clientY-ds.y)/dH*PH;if(Math.abs(dx)>2||Math.abs(dy)>2)ds.moved=true;if(ds.moved){isDraggingText.current=true;setTextInputs(p=>p.map(t=>t.id===ds.id?{...t,x:ds.ox+dx,y:ds.oy+dy}:t));}return;}
     if(!isDrawing.current&&!isPanning.current&&isPalm(e))return;
     if(isPanning.current){const el=scrollRef.current;el.scrollLeft-=(e.clientX-panStart.current.x);el.scrollTop-=(e.clientY-panStart.current.y);panStart.current={x:e.clientX,y:e.clientY};return;}
-    /* Text drag — works with both SELECT and TEXT tools */
-    if(dragTextStart.current&&(tool===T.TEXT||tool===T.SELECT)){const ds=dragTextStart.current;const dx=(e.clientX-ds.x)/dW*PW;const dy=(e.clientY-ds.y)/dH*PH;if(Math.abs(dx)>2||Math.abs(dy)>2)ds.moved=true;if(ds.moved){isDraggingText.current=true;setTextInputs(p=>p.map(t=>t.id===ds.id?{...t,x:ds.ox+dx,y:ds.oy+dy}:t));}return;}
     const pos=getPos(e);
     /* Auto-create page near bottom of last page — debounced */
-    if(isDrawing.current&&currentPage===pages.length-1&&pos.y>PH-AUTO_ZONE&&![T.SELECT,T.HAND].includes(tool)&&!autoPageFlag.current){
+    const isLastInFolder=visiblePages.length>0&&visiblePages[visiblePages.length-1]._idx===currentPage;
+    if(isDrawing.current&&isLastInFolder&&pos.y>PH-AUTO_ZONE&&![T.SELECT,T.HAND].includes(tool)&&!autoPageFlag.current){
       autoPageFlag.current=true;
       const curFid=pgRef.current[cpRef.current]?.folderId||1;
       setPages(p=>[...p,{id:Date.now(),name:`Page ${p.length+1}`,folderId:curFid}]);
@@ -350,7 +354,7 @@ export default function NoteApp({onHome}) {
       {/* ═══ TOP BAR ═══ */}
       <div style={{position:"absolute",top:0,left:0,right:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"space-between",padding:compact?"8px 12px":"10px 20px",pointerEvents:"none"}}>
         <div style={{display:"flex",alignItems:"center",gap:"8px",pointerEvents:"auto"}}><button onClick={()=>setSidebarOpen(!sidebarOpen)} style={{display:"flex",alignItems:"center",gap:"8px",background:th.toolbar,backdropFilter:blur,border:`1px solid ${th.toolbarBorder}`,borderRadius:"14px",padding:compact?"8px 12px":"8px 16px",cursor:"pointer",boxShadow:th.shadow}}><span style={{color:th.text}}>{I.menu}</span>{!tiny&&<span style={{fontFamily:'"Literata",Georgia,serif',fontSize:"14px",fontWeight:700,color:th.text,letterSpacing:"-.3px"}}>Ink Notes</span>}</button></div>
-        <div style={{display:"flex",alignItems:"center",gap:"8px",pointerEvents:"auto"}}><div style={{background:th.toolbar,backdropFilter:blur,border:`1px solid ${th.toolbarBorder}`,borderRadius:"10px",padding:"5px 12px",boxShadow:th.shadow,fontSize:"11px",fontWeight:600,color:stI.c,display:"flex",alignItems:"center",gap:"6px"}}><span>{stI.t}</span><span style={{width:"1px",height:"10px",background:th.border}}/><span style={{color:th.textMuted}}>Pg {currentPage+1}/{pages.length}</span>{!compact&&<><span style={{width:"1px",height:"10px",background:th.border}}/><span style={{color:th.textMuted}}>🛡️ Palm</span></>}</div></div>
+        <div style={{display:"flex",alignItems:"center",gap:"8px",pointerEvents:"auto"}}><div style={{background:th.toolbar,backdropFilter:blur,border:`1px solid ${th.toolbarBorder}`,borderRadius:"10px",padding:"5px 12px",boxShadow:th.shadow,fontSize:"11px",fontWeight:600,color:stI.c,display:"flex",alignItems:"center",gap:"6px"}}><span>{stI.t}</span><span style={{width:"1px",height:"10px",background:th.border}}/><span style={{color:th.textMuted}}>Pg {(visiblePages.findIndex(p=>p._idx===currentPage)+1)||1}/{visiblePages.length}</span>{!compact&&<><span style={{width:"1px",height:"10px",background:th.border}}/><span style={{color:th.textMuted}}>🛡️ Palm</span></>}</div></div>
         <div style={{display:"flex",alignItems:"center",gap:"4px",pointerEvents:"auto"}}>{[{fn:undo,icon:I.undo,en:historyIndex>0},{fn:redo,icon:I.redo,en:historyIndex<history.length-1}].map((a,i)=>(<button key={i} onClick={a.fn} style={{width:"34px",height:"34px",borderRadius:"10px",border:`1px solid ${th.toolbarBorder}`,background:th.toolbar,backdropFilter:blur,boxShadow:th.shadow,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:a.en?th.text:th.textMuted,opacity:a.en?1:.5}}>{a.icon}</button>))}<div style={{width:"4px"}}/><button onClick={()=>setDark(!dark)} style={{width:"34px",height:"34px",borderRadius:"10px",border:`1px solid ${th.toolbarBorder}`,background:th.toolbar,backdropFilter:blur,boxShadow:th.shadow,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:th.accent}}>{dark?I.sun:I.moon}</button>{onHome&&<><div style={{width:"4px"}}/><button onClick={onHome} title="Back to home" style={{width:"34px",height:"34px",borderRadius:"10px",border:`1px solid ${th.toolbarBorder}`,background:th.toolbar,backdropFilter:blur,boxShadow:th.shadow,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:th.accent}}>{I.home}</button></>}</div>
       </div>
 
@@ -407,21 +411,19 @@ export default function NoteApp({onHome}) {
         {/* ═══ SCROLLABLE PAGE STACK ═══ */}
         <div ref={scrollRef} onPointerDown={handleDown} onPointerMove={handleMove} onPointerUp={handleUp} onPointerLeave={handleUp} onPointerCancel={handleUp} style={{flex:1,overflow:"auto",cursor:getCursor(),background:dark?"#0e0c0a":th.bg,position:"relative",touchAction:"none"}}>
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:`${PAGE_PAD}px`,minWidth:dW>baseW?`${dW+PAGE_PAD*2}px`:undefined,paddingTop:`${compact?100:60}px`,paddingBottom:"200px"}}>
-            {pages.map((pg,idx)=>(
+            {visiblePages.map((pg,vIdx)=>{const idx=pg._idx;return(
               <div key={pg.id}>
-                {idx>0&&<div style={{display:"flex",alignItems:"center",gap:"12px",padding:`${PAGE_GAP/2}px 0`,width:dW+"px",maxWidth:"100%",userSelect:"none"}}><div style={{flex:1,height:"1px",background:th.border,opacity:.5}}/><span style={{fontSize:"10px",fontWeight:700,color:th.textMuted,letterSpacing:"1.5px",textTransform:"uppercase",whiteSpace:"nowrap"}}>Page {idx+1}</span><div style={{flex:1,height:"1px",background:th.border,opacity:.5}}/></div>}
+                {vIdx>0&&<div style={{display:"flex",alignItems:"center",gap:"12px",padding:`${PAGE_GAP/2}px 0`,width:dW+"px",maxWidth:"100%",userSelect:"none"}}><div style={{flex:1,height:"1px",background:th.border,opacity:.5}}/><span style={{fontSize:"10px",fontWeight:700,color:th.textMuted,letterSpacing:"1.5px",textTransform:"uppercase",whiteSpace:"nowrap"}}>{pg.name}</span><div style={{flex:1,height:"1px",background:th.border,opacity:.5}}/></div>}
                 <div style={{width:dW+"px",height:dH+"px",position:"relative",borderRadius:Math.max(4,8*zoom)+"px",overflow:"hidden",boxShadow:compact?"0 0 0 1px rgba(0,0,0,0.06)":th.pageShadow,background:"#fff",touchAction:"none"}}>
                   <div style={{width:"100%",height:"100%",filter:dark?"invert(1) hue-rotate(180deg)":"none"}}>
                     <canvas ref={el=>initC(el,pg.id)} style={{width:"100%",height:"100%",display:"block"}}/>
                     {currentPage===idx&&<canvas ref={el=>initO(el,pg.id)} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",pointerEvents:"none"}}/>}
                   </div>
                   {currentPage===idx&&<div style={{position:"absolute",top:0,left:0,right:0,height:Math.max(2,3*zoom)+"px",background:th.accentGrad,transition:"opacity .2s"}}/>}
-                  {currentPage===idx&&textInputs.map(inp=>{const sx=inp.x/PW*dW,sy=inp.y/PH*dH,fs=inp.fontSize/PW*dW;const isEditing=editingText===inp.id;const isSelected=selectedText===inp.id;const canInteract=tool===T.TEXT||tool===T.SELECT;return(
+                  {currentPage===idx&&textInputs.map(inp=>{const sx=inp.x/PW*dW,sy=inp.y/PH*dH,fs=inp.fontSize/PW*dW;const isEditing=editingText===inp.id;const isSelected=selectedText===inp.id;return(
                     <div key={inp.id} style={{position:"absolute",left:sx+"px",top:sy+"px",zIndex:isEditing?22:20,pointerEvents:isEditing?"auto":"none"}}>
-                      {/* Selection outline — blue box with handles */}
-                      {isSelected&&!isEditing&&<div style={{position:"absolute",inset:"-5px",border:"1.5px solid #4a90d9",borderRadius:"2px",pointerEvents:"none"}}>
-                        {[{top:"-4px",left:"-4px"},{top:"-4px",right:"-4px"},{bottom:"-4px",left:"-4px"},{bottom:"-4px",right:"-4px"}].map((p,i)=>(<div key={i} style={{position:"absolute",...p,width:"8px",height:"8px",background:"#fff",border:"1.5px solid #4a90d9",borderRadius:"1px"}}/>))}
-                      </div>}
+                      {/* Selection outline — blue box */}
+                      {isSelected&&!isEditing&&<div style={{position:"absolute",inset:"-5px",border:"1.5px solid #4a90d9",borderRadius:"2px",pointerEvents:"none"}}/>}
                       {isEditing?
                         /* ═══ WYSIWYG Editor — transparent, borderless, auto-sizing ═══ */
                         <textarea autoFocus dir="auto" value={inp.text} placeholder="Type..."
@@ -433,12 +435,12 @@ export default function NoteApp({onHome}) {
                           style={{fontSize:fs+"px",color:dark?invertHex(inp.color):inp.color,fontFamily:'"Literata",Georgia,serif',background:"transparent",border:"none",outline:"none",padding:"1px 2px",margin:0,minWidth:(fs*4)+"px",minHeight:(fs*1.4)+"px",resize:"none",lineHeight:"1.4",display:"block",whiteSpace:"pre",wordBreak:"normal",overflow:"hidden",boxSizing:"content-box",caretColor:dark?invertHex(inp.color):inp.color,letterSpacing:"inherit"}}/>
                       :
                         /* ═══ Rendered text — clean, no border ═══ */
-                        <div style={{fontSize:fs+"px",color:dark?invertHex(inp.color):inp.color,fontFamily:'"Literata",Georgia,serif',padding:"1px 2px",lineHeight:"1.4",whiteSpace:"pre-wrap",wordBreak:"break-word",userSelect:"none",WebkitUserSelect:"none",cursor:canInteract?(isSelected?"move":"default"):"default",minHeight:(fs*1.4)+"px"}}>{inp.text||""}</div>
+                        <div style={{fontSize:fs+"px",color:dark?invertHex(inp.color):inp.color,fontFamily:'"Literata",Georgia,serif',padding:"1px 2px",lineHeight:"1.4",whiteSpace:"pre-wrap",wordBreak:"break-word",userSelect:"none",WebkitUserSelect:"none",cursor:(tool===T.TEXT||tool===T.SELECT)?(isSelected?"move":"default"):"default",minHeight:(fs*1.4)+"px"}}>{inp.text||""}</div>
                       }
                     </div>);})}
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         </div>
       </div>
