@@ -120,9 +120,11 @@ export default function NoteApp({onHome}) {
   const commitSel=useCallback(()=>{if(!selection?.imageData)return;const c=canvasRef.current,ctx=c.getContext("2d");const tc=document.createElement("canvas");tc.width=selection.imageData.width;tc.height=selection.imageData.height;tc.getContext("2d").putImageData(selection.imageData,0,0);ctx.drawImage(tc,selection.x,selection.y,selection.w,selection.h);setSelection(null);selSnap.current=null;overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);saveHist();},[selection,saveHist]);
   const inSel=(p)=>selection&&p.x>=selection.x&&p.x<=selection.x+selection.w&&p.y>=selection.y&&p.y<=selection.y+selection.h;
 
-  /* Text */
-  const commitText=(inp)=>{if(!inp.text.trim())return;const ctx=canvasRef.current.getContext("2d");ctx.save();ctx.font=`${inp.fontSize}px "Literata",Georgia,serif`;ctx.fillStyle=inp.color;ctx.textBaseline="top";inp.text.split("\n").forEach((l,i)=>ctx.fillText(l,inp.x,inp.y+i*inp.fontSize*1.3));ctx.restore();saveHist();};
-  const textBlur=(id)=>{const inp=textInputs.find(t=>t.id===id);if(inp){commitText(inp);setTextInputs(p=>p.filter(t=>t.id!==id));}setEditingText(null);};
+  /* Text — persistent overlays, baked to canvas only on save/export */
+  const bakeTexts=(canvas,texts)=>{if(!canvas||!texts?.length)return;const ctx=canvas.getContext("2d");ctx.save();texts.forEach(inp=>{if(!inp.text.trim())return;ctx.font=`${inp.fontSize}px "Literata",Georgia,serif`;ctx.fillStyle=inp.color;ctx.textBaseline="top";inp.text.split("\n").forEach((l,i)=>ctx.fillText(l,inp.x,inp.y+i*inp.fontSize*1.3));});ctx.restore();};
+  const textBlur=(id)=>{const inp=textInputs.find(t=>t.id===id);if(inp&&!inp.text.trim()){setTextInputs(p=>p.filter(t=>t.id!==id));}setEditingText(null);};
+  const deleteText=(id)=>{setTextInputs(p=>p.filter(t=>t.id!==id));setEditingText(null);};
+  const [draggingText,setDraggingText]=useState(null),dragTextStart=useRef(null);
 
   /* ═══ Switch active page — FIX: save by page ID ═══ */
   const activatePage=useCallback((idx)=>{
@@ -151,7 +153,7 @@ export default function NoteApp({onHome}) {
     const pos=getPos(e);pressureRef.current=pos.pressure||.5;
     if(tool===T.SELECT){if(selection&&inSel(pos)){setIsDraggingSel(true);lastPoint.current=pos;return;}if(selection)commitSel();setSelStart(pos);isDrawing.current=true;return;}
     if(selection)commitSel();
-    if(tool===T.TEXT){setTextInputs(p=>[...p,{id:Date.now(),x:pos.x,y:pos.y,text:"",color,fontSize}]);setEditingText(Date.now());return;}
+    if(tool===T.TEXT){const hit=textInputs.find(t=>{const hw=Math.max(60,t.text.length*t.fontSize*0.6);const hh=Math.max(t.fontSize*1.5,(t.text.split("\n").length)*t.fontSize*1.3);return pos.x>=t.x&&pos.x<=t.x+hw&&pos.y>=t.y&&pos.y<=t.y+hh;});if(hit){setEditingText(hit.id);return;}const nid=Date.now();setTextInputs(p=>[...p,{id:nid,x:pos.x-30,y:pos.y-fontSize*0.65,text:"",color,fontSize}]);setEditingText(nid);return;}
     if([T.LINE,T.ARROW,T.RECT,T.DIAMOND,T.CIRCLE].includes(tool)){shapeStart.current=pos;isDrawing.current=true;return;}
     isDrawing.current=true;lastPoint.current=pos;pathPts.current=[pos];
     if(tool===T.ERASER){const ctx=c.getContext("2d");ctx.save();ctx.fillStyle="#ffffff";ctx.beginPath();ctx.arc(pos.x,pos.y,eraserSize,0,Math.PI*2);ctx.fill();ctx.restore();}
@@ -297,8 +299,8 @@ export default function NoteApp({onHome}) {
   const startFolderRename=(fid)=>{const fl=folders.find(f=>f.id===fid);if(!fl)return;setRenamingFolder(fid);setRenameFolderValue(fl.name);setTimeout(()=>renameFolderRef.current?.focus(),50);};
   const finishFolderRename=()=>{if(renamingFolder!==null&&renameFolderValue.trim())setFolders(f=>f.map(fl=>fl.id===renamingFolder?{...fl,name:renameFolderValue.trim()}:fl));setRenamingFolder(null);};
 
-  /* Export */
-  const getExportDataUrl=()=>{const c=canvasRef.current;if(!c)return"";if(!dark)return c.toDataURL();const tc=document.createElement("canvas");tc.width=c.width;tc.height=c.height;const tctx=tc.getContext("2d");tctx.filter="invert(1) hue-rotate(180deg)";tctx.drawImage(c,0,0);return tc.toDataURL();};
+  /* Export — bake text overlays into exported image */
+  const getExportDataUrl=()=>{const c=canvasRef.current;if(!c)return"";const tc=document.createElement("canvas");tc.width=c.width;tc.height=c.height;const tctx=tc.getContext("2d");if(dark){tctx.filter="invert(1) hue-rotate(180deg)";tctx.drawImage(c,0,0);tctx.filter="none";}else{tctx.drawImage(c,0,0);}bakeTexts(tc,textInputs);return tc.toDataURL();};
   const exportPng=()=>{const a=document.createElement("a");a.download=`note-page-${currentPage+1}.png`;a.href=getExportDataUrl();a.click();};
   const openEmailModal=()=>{setEmailSubject(`Ink Notes — ${pages[currentPage]?.name||"Page "+(currentPage+1)}`);setEmailTo("");setEmailPreview(getExportDataUrl());setShowEmailModal(true);};
   const sendEmail=async()=>{if(!emailTo.includes("@"))return;setEmailSending(true);try{const d=getExportDataUrl();if(navigator.share&&navigator.canShare){const bl=await(await fetch(d)).blob();const f=new File([bl],"note.png",{type:"image/png"});if(navigator.canShare({files:[f]})){try{await navigator.share({title:emailSubject,files:[f]});setShowEmailModal(false);setEmailSending(false);return;}catch{}}}const bl=await(await fetch(d)).blob();const u=URL.createObjectURL(bl);const a=document.createElement("a");a.href=u;a.download="note.png";document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(u);window.open(`mailto:${encodeURIComponent(emailTo)}?subject=${encodeURIComponent(emailSubject)}`,"_self");setShowEmailModal(false);}catch{}setEmailSending(false);};
@@ -394,7 +396,15 @@ export default function NoteApp({onHome}) {
                     {currentPage===idx&&<canvas ref={el=>initO(el,pg.id)} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",pointerEvents:"none"}}/>}
                   </div>
                   {currentPage===idx&&<div style={{position:"absolute",top:0,left:0,right:0,height:Math.max(2,3*zoom)+"px",background:th.accentGrad,transition:"opacity .2s"}}/>}
-                  {currentPage===idx&&textInputs.map(inp=>{const sx=inp.x/PW*dW,sy=inp.y/PH*dH,fs=inp.fontSize/PW*dW;return(<textarea key={inp.id} autoFocus={editingText===inp.id} value={inp.text} onChange={e=>setTextInputs(p=>p.map(t=>t.id===inp.id?{...t,text:e.target.value}:t))} onBlur={()=>textBlur(inp.id)} onKeyDown={e=>{if(e.key==="Escape")e.target.blur();}} style={{position:"absolute",left:sx+"px",top:sy+"px",fontSize:fs+"px",color:dark?invertHex(inp.color):inp.color,fontFamily:'"Literata",Georgia,serif',background:dark?"rgba(21,18,16,.95)":"rgba(255,252,247,.95)",border:`2px solid ${th.accent}`,borderRadius:"8px",outline:"none",padding:"6px 10px",minWidth:"60px",minHeight:fs*1.5+"px",resize:"both",lineHeight:1.4,zIndex:20,boxShadow:th.shadow}}/>);})}
+                  {currentPage===idx&&textInputs.map(inp=>{const sx=inp.x/PW*dW,sy=inp.y/PH*dH,fs=inp.fontSize/PW*dW;const isEditing=editingText===inp.id;const isTextTool=tool===T.TEXT;return(
+                    <div key={inp.id} style={{position:"absolute",left:sx+"px",top:sy+"px",zIndex:isEditing?22:20,pointerEvents:(isEditing||isTextTool)?"auto":"none"}}
+                      onPointerDown={e=>{if(isEditing||!isTextTool)return;e.stopPropagation();e.preventDefault();setDraggingText(inp.id);dragTextStart.current={x:e.clientX,y:e.clientY,ox:inp.x,oy:inp.y};const onMove=ev=>{const dx=(ev.clientX-dragTextStart.current.x)/dW*PW;const dy=(ev.clientY-dragTextStart.current.y)/dH*PH;setTextInputs(p=>p.map(t=>t.id===inp.id?{...t,x:dragTextStart.current.ox+dx,y:dragTextStart.current.oy+dy}:t));};const onUp=()=>{setDraggingText(null);window.removeEventListener("pointermove",onMove);window.removeEventListener("pointerup",onUp);};window.addEventListener("pointermove",onMove);window.addEventListener("pointerup",onUp);}}
+                      onDoubleClick={e=>{if(!isTextTool)return;e.stopPropagation();setEditingText(inp.id);setTimeout(()=>{const ta=e.currentTarget.querySelector("textarea");if(ta){ta.focus();ta.selectionStart=ta.selectionEnd=ta.value.length;}},30);}}>
+                      {/* Delete button */}
+                      {(isEditing||isTextTool)&&<button onClick={e=>{e.stopPropagation();deleteText(inp.id);}} style={{position:"absolute",top:"-10px",right:"-10px",width:"20px",height:"20px",borderRadius:"50%",border:`1.5px solid ${th.border}`,background:th.surface,color:th.danger,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"13px",fontWeight:700,lineHeight:1,zIndex:25,boxShadow:th.shadow,padding:0}}>×</button>}
+                      {isEditing?<textarea autoFocus value={inp.text} onChange={e=>setTextInputs(p=>p.map(t=>t.id===inp.id?{...t,text:e.target.value}:t))} onBlur={()=>textBlur(inp.id)} onKeyDown={e=>{if(e.key==="Escape")e.target.blur();if(e.key==="Backspace"&&!inp.text){e.preventDefault();deleteText(inp.id);}}} style={{fontSize:fs+"px",color:dark?invertHex(inp.color):inp.color,fontFamily:'"Literata",Georgia,serif',background:dark?"rgba(21,18,16,.95)":"rgba(255,252,247,.95)",border:`2px solid ${th.accent}`,borderRadius:"8px",outline:"none",padding:"6px 10px",minWidth:"60px",minHeight:fs*1.5+"px",resize:"both",lineHeight:1.4,boxShadow:`0 0 0 3px ${th.accent}30`,display:"block"}}/>
+                      :<div style={{fontSize:fs+"px",color:dark?invertHex(inp.color):inp.color,fontFamily:'"Literata",Georgia,serif',padding:"6px 10px",borderRadius:"8px",border:isTextTool?`1.5px dashed ${th.accent}40`:"none",cursor:isTextTool?"move":"default",minWidth:"20px",minHeight:fs*1.2+"px",lineHeight:1.4,whiteSpace:"pre-wrap",wordBreak:"break-word",userSelect:"none",WebkitUserSelect:"none"}}>{inp.text||"\u00A0"}</div>}
+                    </div>);})}
                 </div>
               </div>
             ))}
