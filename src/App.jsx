@@ -20,7 +20,7 @@ export default function NoteApp({onHome}) {
   const [pages,setPages]=useState([{id:1,name:"Page 1",folderId:1}]),[currentPage,setCurrentPage]=useState(0);
   const [renamingFolder,setRenamingFolder]=useState(null),[renameFolderValue,setRenameFolderValue]=useState("");
   const [showGrid,setShowGrid]=useState(false),[showRuled,setShowRuled]=useState(false);
-  const [textInputs,setTextInputs]=useState([]),[editingText,setEditingText]=useState(null);
+  const [textInputs,setTextInputs]=useState([]),[editingText,setEditingText]=useState(null),[selectedText,setSelectedText]=useState(null);
   const [sidebarOpen,setSidebarOpen]=useState(false);
   const [saveStatus,setSaveStatus]=useState("idle"),[showUploadModal,setShowUploadModal]=useState(false);
   const [showEmailModal,setShowEmailModal]=useState(false),[emailTo,setEmailTo]=useState(""),[emailSubject,setEmailSubject]=useState("");
@@ -120,11 +120,12 @@ export default function NoteApp({onHome}) {
   const commitSel=useCallback(()=>{if(!selection?.imageData)return;const c=canvasRef.current,ctx=c.getContext("2d");const tc=document.createElement("canvas");tc.width=selection.imageData.width;tc.height=selection.imageData.height;tc.getContext("2d").putImageData(selection.imageData,0,0);ctx.drawImage(tc,selection.x,selection.y,selection.w,selection.h);setSelection(null);selSnap.current=null;overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);saveHist();},[selection,saveHist]);
   const inSel=(p)=>selection&&p.x>=selection.x&&p.x<=selection.x+selection.w&&p.y>=selection.y&&p.y<=selection.y+selection.h;
 
-  /* Text — persistent overlays, baked to canvas only on save/export */
+  /* ═══ Text — Excalidraw-style persistent overlays ═══ */
+  const dragTextStart=useRef(null),isDraggingText=useRef(false);
   const bakeTexts=(canvas,texts)=>{if(!canvas||!texts?.length)return;const ctx=canvas.getContext("2d");ctx.save();texts.forEach(inp=>{if(!inp.text.trim())return;ctx.font=`${inp.fontSize}px "Literata",Georgia,serif`;ctx.fillStyle=inp.color;ctx.textBaseline="top";inp.text.split("\n").forEach((l,i)=>ctx.fillText(l,inp.x,inp.y+i*inp.fontSize*1.3));});ctx.restore();};
-  const textBlur=(id)=>{const inp=textInputs.find(t=>t.id===id);if(inp&&!inp.text.trim()){setTextInputs(p=>p.filter(t=>t.id!==id));}setEditingText(null);};
-  const deleteText=(id)=>{setTextInputs(p=>p.filter(t=>t.id!==id));setEditingText(null);};
-  const [draggingText,setDraggingText]=useState(null),dragTextStart=useRef(null);
+  const hitTestText=(pos)=>textInputs.find(t=>{if(!t.text.trim()&&editingText!==t.id)return false;const m=document.createElement("canvas").getContext("2d");m.font=`${t.fontSize}px "Literata",Georgia,serif`;const lines=t.text.split("\n");const maxW=Math.max(t.fontSize*2,...lines.map(l=>m.measureText(l).width));const h=Math.max(t.fontSize*1.4,lines.length*t.fontSize*1.4);return pos.x>=t.x-4&&pos.x<=t.x+maxW+12&&pos.y>=t.y-4&&pos.y<=t.y+h+8;});
+  const commitEditing=()=>{if(editingText!==null){const inp=textInputs.find(t=>t.id===editingText);if(inp&&!inp.text.trim())setTextInputs(p=>p.filter(t=>t.id!==editingText));setEditingText(null);}};
+  const deleteText=(id)=>{setTextInputs(p=>p.filter(t=>t.id!==id));if(editingText===id)setEditingText(null);if(selectedText===id)setSelectedText(null);};
 
   /* ═══ Switch active page — FIX: save by page ID ═══ */
   const activatePage=useCallback((idx)=>{
@@ -134,7 +135,7 @@ export default function NoteApp({onHome}) {
     if(c&&curPid){pdRef.current[curPid]={image:c.toDataURL(),texts:textInputs};dirtyPages.current.delete(curPid);}
     setCurrentPage(idx);
     const pid=pages[idx].id;canvasRef.current=cMap.current.get(pid);overlayRef.current=oMap.current.get(pid);
-    setTextInputs(pdRef.current[pid]?.texts||[]);setHistory([]);setHistoryIndex(-1);setSelection(null);selSnap.current=null;
+    setTextInputs(pdRef.current[pid]?.texts||[]);setEditingText(null);setSelectedText(null);setHistory([]);setHistoryIndex(-1);setSelection(null);selSnap.current=null;
   },[currentPage,pages,textInputs]);
 
   /* ═══ POINTER HANDLERS ═══ */
@@ -153,7 +154,7 @@ export default function NoteApp({onHome}) {
     const pos=getPos(e);pressureRef.current=pos.pressure||.5;
     if(tool===T.SELECT){if(selection&&inSel(pos)){setIsDraggingSel(true);lastPoint.current=pos;return;}if(selection)commitSel();setSelStart(pos);isDrawing.current=true;return;}
     if(selection)commitSel();
-    if(tool===T.TEXT){const hit=textInputs.find(t=>{const hw=Math.max(60,t.text.length*t.fontSize*0.6);const hh=Math.max(t.fontSize*1.5,(t.text.split("\n").length)*t.fontSize*1.3);return pos.x>=t.x&&pos.x<=t.x+hw&&pos.y>=t.y&&pos.y<=t.y+hh;});if(hit){setEditingText(hit.id);return;}const nid=Date.now();setTextInputs(p=>[...p,{id:nid,x:pos.x-30,y:pos.y-fontSize*0.65,text:"",color,fontSize}]);setEditingText(nid);return;}
+    if(tool===T.TEXT){const hit=hitTestText(pos);if(hit){if(hit.id===selectedText){/* already selected → enter edit */setEditingText(hit.id);setSelectedText(null);}else{/* select it, start drag */commitEditing();setSelectedText(hit.id);setEditingText(null);isDraggingText.current=false;dragTextStart.current={x:e.clientX,y:e.clientY,ox:hit.x,oy:hit.y,id:hit.id,moved:false};}return;}/* clicked empty area → commit any open editor, create new */commitEditing();setSelectedText(null);const nid=Date.now();setTextInputs(p=>[...p,{id:nid,x:pos.x,y:pos.y,text:"",color,fontSize}]);setEditingText(nid);return;}
     if([T.LINE,T.ARROW,T.RECT,T.DIAMOND,T.CIRCLE].includes(tool)){shapeStart.current=pos;isDrawing.current=true;return;}
     isDrawing.current=true;lastPoint.current=pos;pathPts.current=[pos];
     if(tool===T.ERASER){const ctx=c.getContext("2d");ctx.save();ctx.fillStyle="#ffffff";ctx.beginPath();ctx.arc(pos.x,pos.y,eraserSize,0,Math.PI*2);ctx.fill();ctx.restore();}
@@ -162,6 +163,8 @@ export default function NoteApp({onHome}) {
   const handleMove=(e)=>{e.preventDefault();if(pinchRef.current)return;
     if(!isDrawing.current&&!isPanning.current&&isPalm(e))return;
     if(isPanning.current){const el=scrollRef.current;el.scrollLeft-=(e.clientX-panStart.current.x);el.scrollTop-=(e.clientY-panStart.current.y);panStart.current={x:e.clientX,y:e.clientY};return;}
+    /* Text drag */
+    if(dragTextStart.current&&tool===T.TEXT){const ds=dragTextStart.current;const dx=(e.clientX-ds.x)/dW*PW;const dy=(e.clientY-ds.y)/dH*PH;if(Math.abs(dx)>2||Math.abs(dy)>2)ds.moved=true;if(ds.moved){isDraggingText.current=true;setTextInputs(p=>p.map(t=>t.id===ds.id?{...t,x:ds.ox+dx,y:ds.oy+dy}:t));}return;}
     const pos=getPos(e);
     /* Auto-create page near bottom of last page — debounced */
     if(isDrawing.current&&currentPage===pages.length-1&&pos.y>PH-AUTO_ZONE&&![T.SELECT,T.HAND].includes(tool)&&!autoPageFlag.current){
@@ -186,6 +189,7 @@ export default function NoteApp({onHome}) {
 
   const handleUp=(e)=>{
     if(isPanning.current){isPanning.current=false;return;}
+    if(dragTextStart.current&&tool===T.TEXT){const ds=dragTextStart.current;dragTextStart.current=null;if(ds.moved){isDraggingText.current=false;}else if(selectedText===ds.id){/* single click on already-selected → edit */setEditingText(ds.id);setSelectedText(null);}return;}
     if(tool===T.SELECT&&isDraggingSel){setIsDraggingSel(false);lastPoint.current=null;return;}
     if(tool===T.SELECT&&isDrawing.current&&selStart){const pos=getPos(e),x=Math.min(selStart.x,pos.x),y=Math.min(selStart.y,pos.y),w=Math.abs(pos.x-selStart.x),h=Math.abs(pos.y-selStart.y);if(w>5&&h>5){const c=canvasRef.current,ctx=c.getContext("2d");const id=ctx.getImageData(x,y,w,h);selSnap.current=c.toDataURL();ctx.fillStyle="#ffffff";ctx.fillRect(x,y,w,h);selSnap.current=c.toDataURL();setSelection({x,y,w,h,imageData:id});const tc=document.createElement("canvas");tc.width=id.width;tc.height=id.height;tc.getContext("2d").putImageData(id,0,0);ctx.drawImage(tc,x,y,w,h);const o=overlayRef.current,octx=o.getContext("2d");octx.clearRect(0,0,PW,PH);octx.save();octx.setLineDash([6,4]);octx.strokeStyle=th.accent;octx.lineWidth=2;octx.strokeRect(x,y,w,h);octx.restore();}else overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);setSelStart(null);isDrawing.current=false;return;}
     if(!isDrawing.current)return;
@@ -222,7 +226,7 @@ export default function NoteApp({onHome}) {
     return()=>{el.removeEventListener("touchstart",onTS);el.removeEventListener("touchmove",onTM);el.removeEventListener("touchend",onTE);el.removeEventListener("touchcancel",onTE);};
   },[]);
 
-  useEffect(()=>{if(tool!==T.SELECT&&selection)commitSel();},[tool]);
+  useEffect(()=>{if(tool!==T.SELECT&&selection)commitSel();if(tool!==T.TEXT){commitEditing();setSelectedText(null);}},[tool]);
 
   /* ═══ Persistence — FIX: ALL keyed by page ID, no stale closure ═══ */
   const collectState=useCallback(()=>{
@@ -286,7 +290,7 @@ export default function NoteApp({onHome}) {
   useEffect(()=>{const ev=["pointerdown","keydown"];ev.forEach(e=>window.addEventListener(e,resetInact));resetInact();return()=>{ev.forEach(e=>window.removeEventListener(e,resetInact));};},[resetInact]);
   useEffect(()=>{const bu=()=>{try{const s=collectState();const r=indexedDB.open(DB_NAME,DB_VERSION);r.onsuccess=()=>r.result.transaction(STORE,"readwrite").objectStore(STORE).put(s,"app_state");}catch{}};const vis=()=>{if(document.visibilityState==="hidden")saveIDB();};window.addEventListener("beforeunload",bu);document.addEventListener("visibilitychange",vis);return()=>{window.removeEventListener("beforeunload",bu);document.removeEventListener("visibilitychange",vis);};},[collectState,saveIDB]);
 
-  const clearCanvas=()=>{const ctx=canvasRef.current?.getContext("2d");if(!ctx)return;ctx.fillStyle="#ffffff";ctx.fillRect(0,0,PW,PH);setTextInputs([]);setSelection(null);selSnap.current=null;saveHist();};
+  const clearCanvas=()=>{const ctx=canvasRef.current?.getContext("2d");if(!ctx)return;ctx.fillStyle="#ffffff";ctx.fillRect(0,0,PW,PH);setTextInputs([]);setEditingText(null);setSelectedText(null);setSelection(null);selSnap.current=null;saveHist();};
   const savePD=useCallback(()=>{const pid=pages[currentPage]?.id;const c=canvasRef.current;if(!c||!pid)return;pdRef.current[pid]={image:c.toDataURL(),texts:textInputs};},[currentPage,textInputs,pages]);
   const switchPg=(i)=>{if(selection)commitSel();activatePage(i);const c=cMap.current.get(pages[i]?.id);if(c)c.scrollIntoView({behavior:"smooth",block:"center"});};
   const addPg=(folderId)=>{savePD();const fid=folderId||pages[currentPage]?.folderId||folders[0]?.id||1;const np={id:Date.now(),name:`Page ${pages.length+1}`,folderId:fid};setPages(p=>[...p,np]);setFolders(f=>f.map(fl=>fl.id===fid?{...fl,expanded:true}:fl));setTimeout(()=>{const c=cMap.current.get(np.id);if(c)c.scrollIntoView({behavior:"smooth",block:"center"});},200);};
@@ -309,7 +313,7 @@ export default function NoteApp({onHome}) {
   useEffect(()=>{if(!appReady)return;const c=canvasRef.current;if(!c)return;const ctx=c.getContext("2d");if(showGrid||showRuled){ctx.fillStyle="#ffffff";ctx.fillRect(0,0,PW,PH);if(showGrid){ctx.save();ctx.strokeStyle="#e0ddd6";ctx.lineWidth=.5;for(let x=0;x<PW;x+=24){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,PH);ctx.stroke();}for(let y=0;y<PH;y+=24){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(PW,y);ctx.stroke();}ctx.restore();}if(showRuled){ctx.save();ctx.strokeStyle="#c8d0d8";ctx.lineWidth=.7;for(let y=80;y<PH;y+=32){ctx.beginPath();ctx.moveTo(40,y);ctx.lineTo(PW-20,y);ctx.stroke();}ctx.strokeStyle="#d8a0a0";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(60,40);ctx.lineTo(60,PH-20);ctx.stroke();ctx.restore();}saveHist();}},[showGrid,showRuled,appReady]);
 
   /* Shortcuts */
-  useEffect(()=>{const hd=(e)=>{const inInput=document.activeElement.tagName==="INPUT"||document.activeElement.tagName==="TEXTAREA";if(e.key===" "&&!inInput){e.preventDefault();spaceHeld.current=true;}if((e.metaKey||e.ctrlKey)&&e.key==="z"&&!e.shiftKey){e.preventDefault();undo();}if((e.metaKey||e.ctrlKey)&&e.key==="z"&&e.shiftKey){e.preventDefault();redo();}if((e.metaKey||e.ctrlKey)&&e.key==="s"){e.preventDefault();manualSave();}if(e.key==="Escape"&&selection)commitSel();if((e.key==="Delete"||e.key==="Backspace")&&selection&&tool===T.SELECT){if(selSnap.current){const c=canvasRef.current,ctx=c.getContext("2d"),img=new Image();img.onload=()=>{ctx.clearRect(0,0,PW,PH);ctx.drawImage(img,0,0,PW,PH);saveHist();};img.src=selSnap.current;}setSelection(null);selSnap.current=null;overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);}if(!e.metaKey&&!e.ctrlKey&&!inInput){const km={h:T.HAND,v:T.SELECT,p:T.PEN,e:T.ERASER,t:T.TEXT,r:T.RECT,o:T.CIRCLE,l:T.LINE,a:T.ARROW,d:T.DIAMOND};if(km[e.key.toLowerCase()]&&e.key!==" ")setTool(km[e.key.toLowerCase()]);}};const hu=(e)=>{if(e.key===" "){spaceHeld.current=false;isPanning.current=false;}};window.addEventListener("keydown",hd);window.addEventListener("keyup",hu);return()=>{window.removeEventListener("keydown",hd);window.removeEventListener("keyup",hu);};},[undo,redo,manualSave,selection,tool,commitSel,saveHist]);
+  useEffect(()=>{const hd=(e)=>{const inInput=document.activeElement.tagName==="INPUT"||document.activeElement.tagName==="TEXTAREA";if(e.key===" "&&!inInput){e.preventDefault();spaceHeld.current=true;}if((e.metaKey||e.ctrlKey)&&e.key==="z"&&!e.shiftKey){e.preventDefault();undo();}if((e.metaKey||e.ctrlKey)&&e.key==="z"&&e.shiftKey){e.preventDefault();redo();}if((e.metaKey||e.ctrlKey)&&e.key==="s"){e.preventDefault();manualSave();}if(e.key==="Escape"){if(editingText!==null){commitEditing();return;}if(selectedText!==null){setSelectedText(null);return;}if(selection)commitSel();}if((e.key==="Delete"||e.key==="Backspace")&&!inInput){if(selectedText!==null){e.preventDefault();deleteText(selectedText);return;}if(selection&&tool===T.SELECT){if(selSnap.current){const c=canvasRef.current,ctx=c.getContext("2d"),img=new Image();img.onload=()=>{ctx.clearRect(0,0,PW,PH);ctx.drawImage(img,0,0,PW,PH);saveHist();};img.src=selSnap.current;}setSelection(null);selSnap.current=null;overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);}}if(e.key==="Enter"&&selectedText!==null&&!inInput){e.preventDefault();setEditingText(selectedText);setSelectedText(null);}if(!e.metaKey&&!e.ctrlKey&&!inInput){const km={h:T.HAND,v:T.SELECT,p:T.PEN,e:T.ERASER,t:T.TEXT,r:T.RECT,o:T.CIRCLE,l:T.LINE,a:T.ARROW,d:T.DIAMOND};if(km[e.key.toLowerCase()]&&e.key!==" ")setTool(km[e.key.toLowerCase()]);}};const hu=(e)=>{if(e.key===" "){spaceHeld.current=false;isPanning.current=false;}};window.addEventListener("keydown",hd);window.addEventListener("keyup",hu);return()=>{window.removeEventListener("keydown",hd);window.removeEventListener("keyup",hu);};},[undo,redo,manualSave,selection,tool,commitSel,saveHist,editingText,selectedText,commitEditing,deleteText]);
 
   const getCursor=()=>{if(shouldPan())return isPanning.current?"grabbing":"grab";if(tool===T.TEXT)return"text";if(tool===T.ERASER)return"none";if(tool===T.SELECT)return selection?(isDraggingSel?"grabbing":"default"):"crosshair";return"crosshair";};
   const stMap={idle:{c:th.textMuted,t:"Saved"},saved:{c:th.success,t:"✓ Saved"},loaded:{c:th.accent,t:"Restored"}};const stI=stMap[saveStatus]||stMap.idle;
@@ -321,6 +325,7 @@ export default function NoteApp({onHome}) {
       <style>{`
         *{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important;-webkit-tap-highlight-color:transparent!important}
         textarea,input{-webkit-user-select:text!important;user-select:text!important}
+        textarea::placeholder{color:${th.textMuted};opacity:.4}
         canvas{touch-action:none}
       `}</style>
       {/* Upload Modal */}
@@ -397,14 +402,23 @@ export default function NoteApp({onHome}) {
                     {currentPage===idx&&<canvas ref={el=>initO(el,pg.id)} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",pointerEvents:"none"}}/>}
                   </div>
                   {currentPage===idx&&<div style={{position:"absolute",top:0,left:0,right:0,height:Math.max(2,3*zoom)+"px",background:th.accentGrad,transition:"opacity .2s"}}/>}
-                  {currentPage===idx&&textInputs.map(inp=>{const sx=inp.x/PW*dW,sy=inp.y/PH*dH,fs=inp.fontSize/PW*dW;const isEditing=editingText===inp.id;const isTextTool=tool===T.TEXT;return(
-                    <div key={inp.id} style={{position:"absolute",left:sx+"px",top:sy+"px",zIndex:isEditing?22:20,pointerEvents:(isEditing||isTextTool)?"auto":"none"}}
-                      onPointerDown={e=>{if(isEditing||!isTextTool)return;e.stopPropagation();e.preventDefault();setDraggingText(inp.id);dragTextStart.current={x:e.clientX,y:e.clientY,ox:inp.x,oy:inp.y};const onMove=ev=>{const dx=(ev.clientX-dragTextStart.current.x)/dW*PW;const dy=(ev.clientY-dragTextStart.current.y)/dH*PH;setTextInputs(p=>p.map(t=>t.id===inp.id?{...t,x:dragTextStart.current.ox+dx,y:dragTextStart.current.oy+dy}:t));};const onUp=()=>{setDraggingText(null);window.removeEventListener("pointermove",onMove);window.removeEventListener("pointerup",onUp);};window.addEventListener("pointermove",onMove);window.addEventListener("pointerup",onUp);}}
-                      onDoubleClick={e=>{if(!isTextTool)return;e.stopPropagation();setEditingText(inp.id);setTimeout(()=>{const ta=e.currentTarget.querySelector("textarea");if(ta){ta.focus();ta.selectionStart=ta.selectionEnd=ta.value.length;}},30);}}>
-                      {/* Delete button */}
-                      {(isEditing||isTextTool)&&<button onClick={e=>{e.stopPropagation();deleteText(inp.id);}} style={{position:"absolute",top:"-10px",right:"-10px",width:"20px",height:"20px",borderRadius:"50%",border:`1.5px solid ${th.border}`,background:th.surface,color:th.danger,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"13px",fontWeight:700,lineHeight:1,zIndex:25,boxShadow:th.shadow,padding:0}}>×</button>}
-                      {isEditing?<textarea autoFocus value={inp.text} onChange={e=>setTextInputs(p=>p.map(t=>t.id===inp.id?{...t,text:e.target.value}:t))} onBlur={()=>textBlur(inp.id)} onKeyDown={e=>{if(e.key==="Escape")e.target.blur();if(e.key==="Backspace"&&!inp.text){e.preventDefault();deleteText(inp.id);}}} style={{fontSize:fs+"px",color:dark?invertHex(inp.color):inp.color,fontFamily:'"Literata",Georgia,serif',background:dark?"rgba(21,18,16,.95)":"rgba(255,252,247,.95)",border:`2px solid ${th.accent}`,borderRadius:"8px",outline:"none",padding:"6px 10px",minWidth:"60px",minHeight:fs*1.5+"px",resize:"both",lineHeight:1.4,boxShadow:`0 0 0 3px ${th.accent}30`,display:"block"}}/>
-                      :<div style={{fontSize:fs+"px",color:dark?invertHex(inp.color):inp.color,fontFamily:'"Literata",Georgia,serif',padding:"6px 10px",borderRadius:"8px",border:isTextTool?`1.5px dashed ${th.accent}40`:"none",cursor:isTextTool?"move":"default",minWidth:"20px",minHeight:fs*1.2+"px",lineHeight:1.4,whiteSpace:"pre-wrap",wordBreak:"break-word",userSelect:"none",WebkitUserSelect:"none"}}>{inp.text||"\u00A0"}</div>}
+                  {currentPage===idx&&textInputs.map(inp=>{const sx=inp.x/PW*dW,sy=inp.y/PH*dH,fs=inp.fontSize/PW*dW;const isEditing=editingText===inp.id;const isSelected=selectedText===inp.id;const isTextTool=tool===T.TEXT;const interactive=isEditing||isTextTool;return(
+                    <div key={inp.id} style={{position:"absolute",left:sx+"px",top:sy+"px",zIndex:isEditing?22:20,pointerEvents:interactive?"auto":"none"}}>
+                      {/* Selection outline — Excalidraw blue box */}
+                      {isSelected&&!isEditing&&<div style={{position:"absolute",inset:"-4px",border:"2px solid #4a90d9",borderRadius:"3px",pointerEvents:"none"}}/>}
+                      {isEditing?
+                        /* ═══ WYSIWYG Editor — transparent, borderless, auto-sizing ═══ */
+                        <textarea autoFocus dir="auto" value={inp.text} placeholder="Type..."
+                          onChange={e=>{setTextInputs(p=>p.map(t=>t.id===inp.id?{...t,text:e.target.value}:t));/* Auto-resize */const ta=e.target;ta.style.height="auto";ta.style.height=ta.scrollHeight+"px";const m=document.createElement("canvas").getContext("2d");m.font=`${fs}px "Literata",Georgia,serif`;const maxW=Math.max(fs*4,...e.target.value.split("\n").map(l=>m.measureText(l||" ").width));ta.style.width=(maxW+8)+"px";}}
+                          onFocus={e=>{/* Initial auto-size */const ta=e.target;ta.style.height="auto";ta.style.height=ta.scrollHeight+"px";if(inp.text){const m=document.createElement("canvas").getContext("2d");m.font=`${fs}px "Literata",Georgia,serif`;const maxW=Math.max(fs*4,...inp.text.split("\n").map(l=>m.measureText(l||" ").width));ta.style.width=(maxW+8)+"px";}}}
+                          onBlur={()=>{const t=textInputs.find(t=>t.id===inp.id);if(t&&!t.text.trim()){setTextInputs(p=>p.filter(x=>x.id!==inp.id));}setEditingText(null);}}
+                          onKeyDown={e=>{if(e.key==="Escape"){e.preventDefault();e.target.blur();}if(e.key==="Tab"){e.preventDefault();const ta=e.target,s=ta.selectionStart,v=ta.value;setTextInputs(p=>p.map(t=>t.id===inp.id?{...t,text:v.substring(0,s)+"    "+v.substring(ta.selectionEnd)}:t));setTimeout(()=>{ta.selectionStart=ta.selectionEnd=s+4;},0);}}}
+                          onPointerDown={e=>e.stopPropagation()}
+                          style={{fontSize:fs+"px",color:dark?invertHex(inp.color):inp.color,fontFamily:'"Literata",Georgia,serif',background:"transparent",border:"none",outline:"none",padding:"1px 2px",margin:0,minWidth:(fs*4)+"px",minHeight:(fs*1.4)+"px",resize:"none",lineHeight:"1.4",display:"block",whiteSpace:"pre",wordBreak:"normal",overflow:"hidden",boxSizing:"content-box",caretColor:dark?invertHex(inp.color):inp.color,letterSpacing:"inherit"}}/>
+                      :
+                        /* ═══ Rendered text — clean, no border, looks painted on canvas ═══ */
+                        <div style={{fontSize:fs+"px",color:dark?invertHex(inp.color):inp.color,fontFamily:'"Literata",Georgia,serif',padding:"1px 2px",lineHeight:"1.4",whiteSpace:"pre-wrap",wordBreak:"break-word",userSelect:"none",WebkitUserSelect:"none",cursor:isTextTool?(isSelected?"move":"default"):"default",minHeight:(fs*1.4)+"px"}}>{inp.text||""}</div>
+                      }
                     </div>);})}
                 </div>
               </div>
