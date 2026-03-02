@@ -133,7 +133,7 @@ export default function Landing({ onStart }) {
     {
       icon: <svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1"/></svg>,
       title: 'Your Data Never Leaves',
-      desc: 'Everything is stored in your browser\'s IndexedDB. No servers. No cloud. No "anonymous telemetry." Your notes physically cannot be seen by anyone else. Period.',
+      desc: 'Everything is stored in your browser\'s IndexedDB. No servers. No cloud. No "anonymous telemetry." Your notes physically cannot be seen by anyone else. ',
       tag: 'Zero data collection',
       tagClass: 'tag-green',
     },
@@ -147,7 +147,7 @@ export default function Landing({ onStart }) {
     {
       icon: <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>,
       title: 'Dark Mode That Actually Works',
-      desc: 'Not just a dark sidebar \u2014 the entire canvas inverts properly. Your strokes stay visible, colors stay accurate. Because we actually thought about it for more than 5 minutes.',
+      desc: 'Not just a dark sidebar \u2014 the entire canvas inverts properly. Your strokes stay visible, colors stay accurate. Because I actually thought about it for more than 5 minutes.',
       tag: 'Full canvas inversion',
       tagClass: 'tag-blue',
     },
@@ -160,9 +160,9 @@ export default function Landing({ onStart }) {
     },
     {
       icon: <svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>,
-      title: 'Infinite Canvas, Pan & Zoom',
-      desc: 'Pinch to zoom, hand tool to pan, scroll-zoom with Ctrl. Your canvas is as big as your ideas. Not locked into a fixed A4 rectangle like it\'s 2008.',
-      tag: 'Excalidraw-style',
+      title: 'Boundless Canvas',
+      desc: 'Pinch to zoom, hand tool to pan, scroll-zoom with Ctrl. Your canvas grows with your ideas — no fixed page limits, no boundaries. Write as big as you think.',
+      tag: 'Infinite scroll',
       tagClass: 'tag-green',
     },
     {
@@ -176,16 +176,16 @@ export default function Landing({ onStart }) {
 
   const quotes = [
     {
-      text: 'I was paying $120/year to take notes. Then I realized my grandma\'s notebook costs $2 and lasts longer.',
-      author: '\u2014 Everyone, eventually',
+      text: 'Ink Notes cured my back pain, fixed my marriage, and got me a promotion. 10/10 would scribble again.',
+      author: '\u2014 Totally Real Person, CEO of Notes Inc.',
     },
     {
-      text: 'They added AI to my notes app. I didn\'t ask for AI. I asked for my notes to not disappear when the server is down.',
-      author: '\u2014 Also everyone',
+      text: 'I switched from a $120/year app and now I have a new car. Coincidence? My lawyer says I can\'t elaborate.',
+      author: '\u2014 Definitely Not The Developer\'s Alt Account',
     },
     {
-      text: 'My "premium" note app requires WiFi to open my own handwriting. Let that sink in.',
-      author: '\u2014 People who\'ve had enough',
+      text: 'My therapist asked why I look happier. I said I stopped paying subscriptions to write on a screen. She cried.',
+      author: '\u2014 A Very Real Customer \u2605\u2605\u2605\u2605\u2605',
     },
   ];
 
@@ -379,8 +379,8 @@ export default function Landing({ onStart }) {
       {/* ═══════ ROAST QUOTES CAROUSEL ═══════ */}
       <section className="quotes-section">
         <div className="quotes-header">
-          <div className="section-label reveal" data-reveal="up">Real Thoughts</div>
-          <h2 className="section-title reveal" data-reveal="up" data-delay="1">What people think<br />about paid note apps</h2>
+          <div className="section-label reveal" data-reveal="up">Totally Legit Reviews</div>
+          <h2 className="section-title reveal" data-reveal="up" data-delay="1">100% real, definitely<br />not written by me</h2>
         </div>
         <div className="quotes-track-wrapper">
           <div className="quotes-track">
