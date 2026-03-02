@@ -1079,7 +1079,7 @@ footer .footer-tagline {
 
 .arch-diagram {
   position: relative;
-  max-width: 700px;
+  max-width: 760px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -1096,13 +1096,13 @@ footer .footer-tagline {
   padding: 20px 28px;
   position: relative;
   z-index: 2;
-  transition: box-shadow 0.4s ease, border-color 0.4s ease;
+  transition: box-shadow 0.6s ease, border-color 0.4s ease;
 }
 
-/* Cloud / Server — crossed out */
+/* ── Cloud / Server — crossed out ── */
 .arch-cloud {
   border: 1px solid rgba(255, 69, 69, 0.25);
-  opacity: 0.45;
+  opacity: 0.4;
   position: relative;
   margin-bottom: 0;
 }
@@ -1113,17 +1113,15 @@ footer .footer-tagline {
   border: 2.5px solid var(--red);
   border-radius: 20px;
   opacity: 0;
-  transition: opacity 0.5s ease;
+  transition: opacity 0.5s ease 0.3s;
 }
-.arch-cloud.visible::after {
-  opacity: 1;
-}
+.arch-cloud.visible::after { opacity: 0.8; }
 .arch-cloud-slash {
   position: absolute;
   top: 50%; left: 50%;
-  width: 120%;
+  width: 130%;
   height: 3px;
-  background: var(--red);
+  background: linear-gradient(90deg, transparent, var(--red), var(--red), transparent);
   transform: translate(-50%, -50%) rotate(-30deg) scaleX(0);
   transform-origin: center;
   border-radius: 2px;
@@ -1133,10 +1131,7 @@ footer .footer-tagline {
 .arch-cloud.visible .arch-cloud-slash {
   transform: translate(-50%, -50%) rotate(-30deg) scaleX(1);
 }
-.arch-cloud-icon {
-  font-size: 24px;
-  margin-bottom: 4px;
-}
+.arch-cloud-icon { font-size: 28px; margin-bottom: 6px; }
 .arch-cloud-label {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -1145,166 +1140,339 @@ footer .footer-tagline {
   color: var(--red);
 }
 
-/* "No connection" X between cloud and browser */
 .arch-no-conn {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 12px;
   color: var(--red);
-  letter-spacing: 2px;
-  padding: 12px 0;
+  letter-spacing: 3px;
+  padding: 14px 0;
   opacity: 0;
   transition: opacity 0.5s ease 1s;
 }
-.arch-diagram.visible .arch-no-conn {
-  opacity: 1;
-}
+.arch-diagram.visible .arch-no-conn { opacity: 0.8; }
 
-/* Browser node — main hero */
-.arch-browser {
-  border: 1.5px solid rgba(79, 143, 255, 0.3);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 0 60px rgba(79,143,255,0.08);
-  padding: 28px 32px 24px;
+/* ── Browser boundary wrapper ── */
+.arch-browser-wrap {
   width: 100%;
-  max-width: 520px;
+  max-width: 680px;
+  border: 1.5px solid rgba(79, 143, 255, 0.2);
+  border-radius: 24px;
+  padding: 32px 28px 28px;
+  position: relative;
+  background: linear-gradient(180deg, rgba(79,143,255,0.03) 0%, transparent 40%);
+  box-shadow: 0 0 80px rgba(79,143,255,0.06), inset 0 1px 0 rgba(255,255,255,0.04);
+  transition: box-shadow 0.8s ease;
 }
-.arch-browser-title {
+.arch-browser-wrap.visible {
+  box-shadow: 0 0 120px rgba(79,143,255,0.1), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+.arch-browser-badge {
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  transform: translateX(-50%);
   font-family: var(--font-mono);
-  font-size: 13px;
-  letter-spacing: 3px;
+  font-size: 10px;
+  letter-spacing: 4px;
   text-transform: uppercase;
   color: var(--accent);
-  margin-bottom: 20px;
+  background: var(--bg);
+  padding: 3px 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(79,143,255,0.3);
   font-weight: 700;
-}
-.arch-browser.visible {
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 0 80px rgba(79,143,255,0.15);
+  white-space: nowrap;
 }
 
-/* Sub-nodes inside browser */
+/* ── Flow labels ── */
+.arch-flow-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin: 14px 0;
+}
+.arch-flow-label.p2p { margin: 20px 0 14px; }
+.arch-flow-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.arch-flow-dot.input { background: var(--accent); box-shadow: 0 0 12px rgba(79,143,255,0.5); animation: arch-dot-pulse 2s ease-in-out infinite; }
+.arch-flow-dot.save { background: var(--gold); box-shadow: 0 0 12px rgba(251,191,36,0.5); animation: arch-dot-pulse 2s ease-in-out infinite 0.5s; }
+.arch-flow-dot.p2p { background: var(--green); box-shadow: 0 0 12px rgba(52,211,153,0.5); animation: arch-dot-pulse 2s ease-in-out infinite 1s; }
+
+@keyframes arch-dot-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.6; }
+}
+
+/* ── Engine module cards ── */
 .arch-sub-row {
   display: flex;
   gap: 12px;
   justify-content: center;
-  margin-bottom: 16px;
   flex-wrap: wrap;
 }
-.arch-sub {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 10px;
-  padding: 10px 18px;
+.arch-module {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 14px;
+  padding: 16px 18px;
+  text-align: center;
+  min-width: 130px;
+  flex: 1;
+  max-width: 180px;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+.arch-module:hover {
+  border-color: rgba(79,143,255,0.2);
+  box-shadow: 0 0 30px rgba(79,143,255,0.06);
+}
+.arch-module-icon { font-size: 24px; margin-bottom: 8px; }
+.arch-module-name {
   font-family: var(--font-mono);
   font-size: 11px;
+  font-weight: 700;
   letter-spacing: 1px;
   color: var(--text);
-  opacity: 0;
-  transform: translateY(10px);
-  transition: opacity 0.4s ease, transform 0.4s ease;
+  margin-bottom: 4px;
 }
-.arch-browser.visible .arch-sub:nth-child(1) { opacity: 1; transform: none; transition-delay: 0.3s; }
-.arch-browser.visible .arch-sub:nth-child(2) { opacity: 1; transform: none; transition-delay: 0.5s; }
-.arch-browser.visible .arch-sub:nth-child(3) { opacity: 1; transform: none; transition-delay: 0.7s; }
-.arch-sub-icon { margin-right: 6px; }
+.arch-module-desc {
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+}
 
-/* Arrow connector (SVG) */
-.arch-connector {
+/* ── Animated flow pipes ── */
+.arch-flow-pipe {
   width: 2px;
-  height: 32px;
+  height: 40px;
   position: relative;
-  z-index: 1;
+  overflow: visible;
+  margin: 0 auto;
 }
-.arch-connector::after {
+.arch-flow-pipe.short { height: 28px; }
+.arch-flow-pipe::after {
   content: '';
   position: absolute;
-  top: 0; left: 50%;
-  transform: translateX(-50%);
+  top: 0; left: 0;
   width: 2px;
   height: 100%;
-  background: var(--accent);
-  opacity: 0.3;
-  transform-origin: top;
-  animation: none;
+  background: linear-gradient(180deg, rgba(79,143,255,0.4), rgba(79,143,255,0.1));
 }
-.arch-connector.green::after { background: var(--green); }
+.arch-flow-pipe.short::after {
+  background: linear-gradient(180deg, rgba(52,211,153,0.4), rgba(52,211,153,0.1));
+}
+.arch-flow-particle {
+  position: absolute;
+  left: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent), 0 0 20px rgba(79,143,255,0.3);
+  animation: arch-flow-down 2s ease-in-out infinite;
+}
+.arch-flow-particle.delay2 { animation-delay: 1s; }
+.arch-flow-particle.green {
+  background: var(--green);
+  box-shadow: 0 0 10px var(--green), 0 0 20px rgba(52,211,153,0.3);
+}
 
-/* IndexedDB node */
+@keyframes arch-flow-down {
+  0% { top: -4px; opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { top: calc(100% - 4px); opacity: 0; }
+}
+
+/* ── Storage row ── */
+.arch-storage-row {
+  display: flex;
+  justify-content: center;
+}
 .arch-db {
-  border: 1.5px solid rgba(52, 211, 153, 0.3);
-  box-shadow: 0 0 40px rgba(52, 211, 153, 0.06);
-  max-width: 280px;
+  border: 1.5px solid rgba(52, 211, 153, 0.25);
+  box-shadow: 0 0 40px rgba(52, 211, 153, 0.04);
+  max-width: 400px;
   width: 100%;
+  padding: 22px 24px;
+  text-align: center;
 }
 .arch-db.visible {
-  box-shadow: 0 0 60px rgba(52, 211, 153, 0.12);
+  box-shadow: 0 0 80px rgba(52, 211, 153, 0.1);
+  animation: arch-db-glow 3s ease-in-out infinite;
 }
-.arch-db-icon { font-size: 20px; margin-bottom: 4px; }
+@keyframes arch-db-glow {
+  0%, 100% { box-shadow: 0 0 60px rgba(52, 211, 153, 0.08); }
+  50% { box-shadow: 0 0 100px rgba(52, 211, 153, 0.16); }
+}
+.arch-db-badge {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--green);
+  background: var(--surface, #111114);
+  padding: 2px 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(52,211,153,0.25);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.arch-db-icon { font-size: 24px; margin-bottom: 6px; }
 .arch-db-label {
   font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--green);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.arch-db-sub {
   font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+.arch-db-details {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.arch-db-tag {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--green);
+  padding: 3px 10px;
+  border: 1px solid rgba(52,211,153,0.15);
+  border-radius: 12px;
+  background: rgba(52,211,153,0.04);
+}
+
+/* ── Output row ── */
+.arch-output-row {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.arch-output {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px;
+  padding: 14px 16px;
+  text-align: center;
+  min-width: 110px;
+  flex: 1;
+  max-width: 160px;
+  transition: border-color 0.3s ease, transform 0.3s ease;
+}
+.arch-output:hover {
+  border-color: rgba(251,191,36,0.2);
+  transform: translateY(-2px);
+}
+.arch-output-icon { font-size: 20px; margin-bottom: 6px; }
+.arch-output-name {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text);
+  margin-bottom: 3px;
+}
+.arch-output-desc {
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 0.3px;
+}
+
+/* ── P2P section ── */
+.arch-p2p-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  justify-content: center;
+}
+.arch-peer {
+  border: 1px solid rgba(52, 211, 153, 0.2);
+  box-shadow: 0 0 30px rgba(52, 211, 153, 0.04);
+  padding: 16px 24px;
+  min-width: 130px;
+}
+.arch-peer-icon { font-size: 22px; margin-bottom: 4px; }
+.arch-peer-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
   letter-spacing: 2px;
   text-transform: uppercase;
   color: var(--green);
   font-weight: 700;
 }
-.arch-db-sub {
-  font-size: 11px;
+.arch-peer-sub {
+  font-size: 9px;
   color: var(--muted);
-  margin-top: 4px;
+  margin-top: 2px;
+  letter-spacing: 0.5px;
 }
 
-/* P2P section */
-.arch-p2p-row {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-.arch-peer {
-  border: 1px solid rgba(52, 211, 153, 0.2);
-  box-shadow: 0 0 20px rgba(52, 211, 153, 0.04);
-  padding: 14px 22px;
-  min-width: 120px;
-}
-.arch-peer-icon { font-size: 18px; margin-bottom: 2px; }
-.arch-peer-label {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: var(--green);
-}
-
-/* P2P dashed connection */
-.arch-p2p-line {
-  width: 60px;
-  height: 2px;
-  background: repeating-linear-gradient(90deg, var(--green) 0, var(--green) 6px, transparent 6px, transparent 12px);
-  opacity: 0;
-  transition: opacity 0.5s ease 1.6s;
+/* P2P bridge with animated SVG */
+.arch-p2p-bridge {
+  width: 120px;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
-.arch-p2p-line::after {
-  content: 'WebRTC';
-  position: absolute;
-  top: -18px;
-  left: 50%;
-  transform: translateX(-50%);
+.arch-p2p-svg {
+  width: 120px;
+  height: 40px;
+  overflow: visible;
+}
+.arch-p2p-path {
+  opacity: 0.3;
+}
+.arch-p2p-path-glow {
+  opacity: 0;
+  filter: blur(3px);
+  animation: arch-p2p-glow 2s ease-in-out infinite;
+}
+@keyframes arch-p2p-glow {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 0.5; }
+}
+.arch-p2p-dot {
+  filter: drop-shadow(0 0 4px var(--green));
+}
+.arch-p2p-tag {
   font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 2px;
   color: var(--green);
-  white-space: nowrap;
+  text-transform: uppercase;
   opacity: 0.6;
-}
-.arch-diagram.visible .arch-p2p-line {
-  opacity: 1;
+  margin-top: 2px;
 }
 
-/* Trust labels row */
+/* ── Trust labels ── */
 .arch-labels {
   display: flex;
-  gap: 16px;
+  gap: 10px;
   justify-content: center;
   flex-wrap: wrap;
   margin-top: 40px;
@@ -1327,18 +1495,25 @@ footer .footer-tagline {
 .arch-diagram.visible .arch-label:nth-child(2) { opacity: 1; transform: none; transition-delay: 2.0s; }
 .arch-diagram.visible .arch-label:nth-child(3) { opacity: 1; transform: none; transition-delay: 2.2s; }
 .arch-diagram.visible .arch-label:nth-child(4) { opacity: 1; transform: none; transition-delay: 2.4s; }
+.arch-diagram.visible .arch-label:nth-child(5) { opacity: 1; transform: none; transition-delay: 2.6s; }
 .arch-label.green { color: var(--green); border-color: rgba(52,211,153,0.15); }
 .arch-label.blue { color: var(--accent); border-color: rgba(79,143,255,0.15); }
+.arch-label.red { color: var(--red); border-color: rgba(255,69,69,0.15); }
+.arch-label.gold { color: var(--gold); border-color: rgba(251,191,36,0.15); }
 
-/* Responsive */
+/* ── Responsive ── */
 @media (max-width: 700px) {
-  .arch-section { padding: 80px 20px 60px; }
-  .arch-browser { padding: 20px 16px; }
-  .arch-sub { padding: 8px 12px; font-size: 10px; }
-  .arch-p2p-row { gap: 12px; }
-  .arch-p2p-line { width: 40px; }
-  .arch-labels { gap: 8px; }
-  .arch-label { font-size: 9px; padding: 5px 10px; }
+  .arch-section { padding: 80px 16px 60px; }
+  .arch-browser-wrap { padding: 24px 14px 20px; border-radius: 18px; }
+  .arch-module { min-width: 100px; padding: 12px 10px; }
+  .arch-module-icon { font-size: 20px; }
+  .arch-output { min-width: 90px; padding: 10px 8px; }
+  .arch-p2p-row { flex-wrap: wrap; gap: 10px; }
+  .arch-p2p-bridge { width: 80px; }
+  .arch-p2p-svg { width: 80px; }
+  .arch-labels { gap: 6px; }
+  .arch-label { font-size: 9px; padding: 5px 10px; letter-spacing: 1px; }
+  .arch-db-tag { font-size: 8px; padding: 2px 8px; }
 }
 
 /* ── Reduced Motion ── */
