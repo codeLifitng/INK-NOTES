@@ -175,7 +175,7 @@
   position: relative;
   color: var(--red);
   text-decoration: none;
-  opacity: 0.5;
+  opacity: 0.6;
   font-size: 0.6em;
   display: inline-block;
 }
@@ -187,7 +187,8 @@
   left: -4px;
   right: -4px;
   height: 4px;
-  background: var(--red);
+  background: var(--text);
+  border-radius: 2px;
   transform-origin: left;
   animation: slideRight 0.6s ease 1s both;
 }
@@ -407,6 +408,8 @@ section {
 .roast-card.them .price {
   color: var(--red);
   text-decoration: line-through;
+  text-decoration-color: var(--text);
+  text-decoration-thickness: 3px;
 }
 
 .roast-card.us .price {
@@ -539,8 +542,19 @@ section {
 }
 
 .feat-icon {
-  font-size: 64px;
-  filter: grayscale(0);
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.feat-icon svg {
+  width: 40px;
+  height: 40px;
 }
 
 .feat-content h3 {
