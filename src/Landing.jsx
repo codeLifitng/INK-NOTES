@@ -349,6 +349,59 @@ export default function Landing({ onStart }) {
         </div>
       </section>
 
+      {/* ═══════ ARCHITECTURE DIAGRAM ═══════ */}
+      <section className="arch-section">
+        <div className="section-label reveal" data-reveal="up">Architecture</div>
+        <h2 className="section-title reveal" data-reveal="up" data-delay="1">See how your data <strong>never</strong> leaves</h2>
+        <p className="section-sub reveal" data-reveal="up" data-delay="2">Everything runs inside your browser. No servers. No cloud. Just you.</p>
+        <div className="arch-diagram reveal" data-reveal="scale">
+          {/* Cloud — crossed out */}
+          <div className="arch-node arch-cloud reveal" data-reveal="scale">
+            <div className="arch-cloud-slash" />
+            <div className="arch-cloud-icon">☁️</div>
+            <div className="arch-cloud-label">Cloud / Server</div>
+          </div>
+          <div className="arch-no-conn">✕ NO CONNECTION</div>
+          {/* Browser — main node */}
+          <div className="arch-node arch-browser reveal" data-reveal="up" data-delay="2">
+            <div className="arch-browser-title">⬡ Your Browser</div>
+            <div className="arch-sub-row">
+              <div className="arch-sub"><span className="arch-sub-icon">🎨</span>Canvas Engine</div>
+              <div className="arch-sub"><span className="arch-sub-icon">✏️</span>Text Editor</div>
+              <div className="arch-sub"><span className="arch-sub-icon">◇</span>Vector Shapes</div>
+            </div>
+            <div className="arch-connector" />
+            <div style={{display:"flex",justifyContent:"center"}}>
+              <div className="arch-node arch-db reveal" data-reveal="scale" data-delay="3">
+                <div className="arch-db-icon">💾</div>
+                <div className="arch-db-label">IndexedDB</div>
+                <div className="arch-db-sub">Your data stays here</div>
+              </div>
+            </div>
+          </div>
+          <div className="arch-connector green" />
+          {/* P2P peers */}
+          <div className="arch-p2p-row">
+            <div className="arch-node arch-peer reveal" data-reveal="up" data-delay="4">
+              <div className="arch-peer-icon">💻</div>
+              <div className="arch-peer-label">Peer A</div>
+            </div>
+            <div className="arch-p2p-line" />
+            <div className="arch-node arch-peer reveal" data-reveal="up" data-delay="5">
+              <div className="arch-peer-icon">💻</div>
+              <div className="arch-peer-label">Peer B</div>
+            </div>
+          </div>
+          {/* Trust labels */}
+          <div className="arch-labels">
+            <div className="arch-label green">No Servers</div>
+            <div className="arch-label blue">No Cloud</div>
+            <div className="arch-label">No Tracking</div>
+            <div className="arch-label green">100% Local</div>
+          </div>
+        </div>
+      </section>
+
       {/* ═══════ BENTO FEATURES ═══════ */}
       <section>
         <div className="bento-section-header">
