@@ -152,9 +152,23 @@ export default function NoteApp({onHome}) {
     const c=cMap.current.get(pages[pi].id);const o=oMap.current.get(pages[pi].id);
     canvasRef.current=c;overlayRef.current=o;
     const pos=getPos(e);pressureRef.current=pos.pressure||.5;
+    /* ── Text hit-test for SELECT & TEXT tools ── */
+    if(tool===T.SELECT||tool===T.TEXT){const hit=hitTestText(pos);
+      if(hit){
+        if(selection)commitSel();
+        if(hit.id===editingText)return;/* already editing this one */
+        if(hit.id===selectedText){/* already selected → enter edit on second click */setEditingText(hit.id);setSelectedText(null);return;}
+        /* select it + prepare drag */
+        commitEditing();setSelectedText(hit.id);setEditingText(null);
+        dragTextStart.current={x:e.clientX,y:e.clientY,ox:hit.x,oy:hit.y,id:hit.id,moved:false};
+        return;
+      }
+      /* clicked empty area */
+      commitEditing();setSelectedText(null);
+    }
     if(tool===T.SELECT){if(selection&&inSel(pos)){setIsDraggingSel(true);lastPoint.current=pos;return;}if(selection)commitSel();setSelStart(pos);isDrawing.current=true;return;}
     if(selection)commitSel();
-    if(tool===T.TEXT){const hit=hitTestText(pos);if(hit){if(hit.id===selectedText){/* already selected → enter edit */setEditingText(hit.id);setSelectedText(null);}else{/* select it, start drag */commitEditing();setSelectedText(hit.id);setEditingText(null);isDraggingText.current=false;dragTextStart.current={x:e.clientX,y:e.clientY,ox:hit.x,oy:hit.y,id:hit.id,moved:false};}return;}/* clicked empty area → commit any open editor, create new */commitEditing();setSelectedText(null);const nid=Date.now();setTextInputs(p=>[...p,{id:nid,x:pos.x,y:pos.y,text:"",color,fontSize}]);setEditingText(nid);return;}
+    if(tool===T.TEXT){const nid=Date.now();setTextInputs(p=>[...p,{id:nid,x:pos.x,y:pos.y,text:"",color,fontSize}]);setEditingText(nid);return;}
     if([T.LINE,T.ARROW,T.RECT,T.DIAMOND,T.CIRCLE].includes(tool)){shapeStart.current=pos;isDrawing.current=true;return;}
     isDrawing.current=true;lastPoint.current=pos;pathPts.current=[pos];
     if(tool===T.ERASER){const ctx=c.getContext("2d");ctx.save();ctx.fillStyle="#ffffff";ctx.beginPath();ctx.arc(pos.x,pos.y,eraserSize,0,Math.PI*2);ctx.fill();ctx.restore();}
@@ -163,8 +177,8 @@ export default function NoteApp({onHome}) {
   const handleMove=(e)=>{e.preventDefault();if(pinchRef.current)return;
     if(!isDrawing.current&&!isPanning.current&&isPalm(e))return;
     if(isPanning.current){const el=scrollRef.current;el.scrollLeft-=(e.clientX-panStart.current.x);el.scrollTop-=(e.clientY-panStart.current.y);panStart.current={x:e.clientX,y:e.clientY};return;}
-    /* Text drag */
-    if(dragTextStart.current&&tool===T.TEXT){const ds=dragTextStart.current;const dx=(e.clientX-ds.x)/dW*PW;const dy=(e.clientY-ds.y)/dH*PH;if(Math.abs(dx)>2||Math.abs(dy)>2)ds.moved=true;if(ds.moved){isDraggingText.current=true;setTextInputs(p=>p.map(t=>t.id===ds.id?{...t,x:ds.ox+dx,y:ds.oy+dy}:t));}return;}
+    /* Text drag — works with both SELECT and TEXT tools */
+    if(dragTextStart.current&&(tool===T.TEXT||tool===T.SELECT)){const ds=dragTextStart.current;const dx=(e.clientX-ds.x)/dW*PW;const dy=(e.clientY-ds.y)/dH*PH;if(Math.abs(dx)>2||Math.abs(dy)>2)ds.moved=true;if(ds.moved){isDraggingText.current=true;setTextInputs(p=>p.map(t=>t.id===ds.id?{...t,x:ds.ox+dx,y:ds.oy+dy}:t));}return;}
     const pos=getPos(e);
     /* Auto-create page near bottom of last page — debounced */
     if(isDrawing.current&&currentPage===pages.length-1&&pos.y>PH-AUTO_ZONE&&![T.SELECT,T.HAND].includes(tool)&&!autoPageFlag.current){
@@ -189,7 +203,7 @@ export default function NoteApp({onHome}) {
 
   const handleUp=(e)=>{
     if(isPanning.current){isPanning.current=false;return;}
-    if(dragTextStart.current&&tool===T.TEXT){const ds=dragTextStart.current;dragTextStart.current=null;if(ds.moved){isDraggingText.current=false;}else if(selectedText===ds.id){/* single click on already-selected → edit */setEditingText(ds.id);setSelectedText(null);}return;}
+    if(dragTextStart.current&&(tool===T.TEXT||tool===T.SELECT)){const ds=dragTextStart.current;dragTextStart.current=null;if(ds.moved){isDraggingText.current=false;}return;}
     if(tool===T.SELECT&&isDraggingSel){setIsDraggingSel(false);lastPoint.current=null;return;}
     if(tool===T.SELECT&&isDrawing.current&&selStart){const pos=getPos(e),x=Math.min(selStart.x,pos.x),y=Math.min(selStart.y,pos.y),w=Math.abs(pos.x-selStart.x),h=Math.abs(pos.y-selStart.y);if(w>5&&h>5){const c=canvasRef.current,ctx=c.getContext("2d");const id=ctx.getImageData(x,y,w,h);selSnap.current=c.toDataURL();ctx.fillStyle="#ffffff";ctx.fillRect(x,y,w,h);selSnap.current=c.toDataURL();setSelection({x,y,w,h,imageData:id});const tc=document.createElement("canvas");tc.width=id.width;tc.height=id.height;tc.getContext("2d").putImageData(id,0,0);ctx.drawImage(tc,x,y,w,h);const o=overlayRef.current,octx=o.getContext("2d");octx.clearRect(0,0,PW,PH);octx.save();octx.setLineDash([6,4]);octx.strokeStyle=th.accent;octx.lineWidth=2;octx.strokeRect(x,y,w,h);octx.restore();}else overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);setSelStart(null);isDrawing.current=false;return;}
     if(!isDrawing.current)return;
@@ -226,7 +240,7 @@ export default function NoteApp({onHome}) {
     return()=>{el.removeEventListener("touchstart",onTS);el.removeEventListener("touchmove",onTM);el.removeEventListener("touchend",onTE);el.removeEventListener("touchcancel",onTE);};
   },[]);
 
-  useEffect(()=>{if(tool!==T.SELECT&&selection)commitSel();if(tool!==T.TEXT){commitEditing();setSelectedText(null);}},[tool]);
+  useEffect(()=>{if(tool!==T.SELECT&&selection)commitSel();if(tool!==T.TEXT&&tool!==T.SELECT){commitEditing();setSelectedText(null);}},[tool]);
 
   /* ═══ Persistence — FIX: ALL keyed by page ID, no stale closure ═══ */
   const collectState=useCallback(()=>{
@@ -402,22 +416,24 @@ export default function NoteApp({onHome}) {
                     {currentPage===idx&&<canvas ref={el=>initO(el,pg.id)} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",pointerEvents:"none"}}/>}
                   </div>
                   {currentPage===idx&&<div style={{position:"absolute",top:0,left:0,right:0,height:Math.max(2,3*zoom)+"px",background:th.accentGrad,transition:"opacity .2s"}}/>}
-                  {currentPage===idx&&textInputs.map(inp=>{const sx=inp.x/PW*dW,sy=inp.y/PH*dH,fs=inp.fontSize/PW*dW;const isEditing=editingText===inp.id;const isSelected=selectedText===inp.id;const isTextTool=tool===T.TEXT;const interactive=isEditing||isTextTool;return(
-                    <div key={inp.id} style={{position:"absolute",left:sx+"px",top:sy+"px",zIndex:isEditing?22:20,pointerEvents:interactive?"auto":"none"}}>
-                      {/* Selection outline — Excalidraw blue box */}
-                      {isSelected&&!isEditing&&<div style={{position:"absolute",inset:"-4px",border:"2px solid #4a90d9",borderRadius:"3px",pointerEvents:"none"}}/>}
+                  {currentPage===idx&&textInputs.map(inp=>{const sx=inp.x/PW*dW,sy=inp.y/PH*dH,fs=inp.fontSize/PW*dW;const isEditing=editingText===inp.id;const isSelected=selectedText===inp.id;const canInteract=tool===T.TEXT||tool===T.SELECT;return(
+                    <div key={inp.id} style={{position:"absolute",left:sx+"px",top:sy+"px",zIndex:isEditing?22:20,pointerEvents:isEditing?"auto":"none"}}>
+                      {/* Selection outline — blue box with handles */}
+                      {isSelected&&!isEditing&&<div style={{position:"absolute",inset:"-5px",border:"1.5px solid #4a90d9",borderRadius:"2px",pointerEvents:"none"}}>
+                        {[{top:"-4px",left:"-4px"},{top:"-4px",right:"-4px"},{bottom:"-4px",left:"-4px"},{bottom:"-4px",right:"-4px"}].map((p,i)=>(<div key={i} style={{position:"absolute",...p,width:"8px",height:"8px",background:"#fff",border:"1.5px solid #4a90d9",borderRadius:"1px"}}/>))}
+                      </div>}
                       {isEditing?
                         /* ═══ WYSIWYG Editor — transparent, borderless, auto-sizing ═══ */
                         <textarea autoFocus dir="auto" value={inp.text} placeholder="Type..."
-                          onChange={e=>{setTextInputs(p=>p.map(t=>t.id===inp.id?{...t,text:e.target.value}:t));/* Auto-resize */const ta=e.target;ta.style.height="auto";ta.style.height=ta.scrollHeight+"px";const m=document.createElement("canvas").getContext("2d");m.font=`${fs}px "Literata",Georgia,serif`;const maxW=Math.max(fs*4,...e.target.value.split("\n").map(l=>m.measureText(l||" ").width));ta.style.width=(maxW+8)+"px";}}
-                          onFocus={e=>{/* Initial auto-size */const ta=e.target;ta.style.height="auto";ta.style.height=ta.scrollHeight+"px";if(inp.text){const m=document.createElement("canvas").getContext("2d");m.font=`${fs}px "Literata",Georgia,serif`;const maxW=Math.max(fs*4,...inp.text.split("\n").map(l=>m.measureText(l||" ").width));ta.style.width=(maxW+8)+"px";}}}
+                          onChange={e=>{setTextInputs(p=>p.map(t=>t.id===inp.id?{...t,text:e.target.value}:t));const ta=e.target;ta.style.height="auto";ta.style.height=ta.scrollHeight+"px";const m=document.createElement("canvas").getContext("2d");m.font=`${fs}px "Literata",Georgia,serif`;const maxW=Math.max(fs*4,...e.target.value.split("\n").map(l=>m.measureText(l||" ").width));ta.style.width=(maxW+8)+"px";}}
+                          onFocus={e=>{const ta=e.target;ta.style.height="auto";ta.style.height=ta.scrollHeight+"px";if(inp.text){const m=document.createElement("canvas").getContext("2d");m.font=`${fs}px "Literata",Georgia,serif`;const maxW=Math.max(fs*4,...inp.text.split("\n").map(l=>m.measureText(l||" ").width));ta.style.width=(maxW+8)+"px";}}}
                           onBlur={()=>{const t=textInputs.find(t=>t.id===inp.id);if(t&&!t.text.trim()){setTextInputs(p=>p.filter(x=>x.id!==inp.id));}setEditingText(null);}}
                           onKeyDown={e=>{if(e.key==="Escape"){e.preventDefault();e.target.blur();}if(e.key==="Tab"){e.preventDefault();const ta=e.target,s=ta.selectionStart,v=ta.value;setTextInputs(p=>p.map(t=>t.id===inp.id?{...t,text:v.substring(0,s)+"    "+v.substring(ta.selectionEnd)}:t));setTimeout(()=>{ta.selectionStart=ta.selectionEnd=s+4;},0);}}}
                           onPointerDown={e=>e.stopPropagation()}
                           style={{fontSize:fs+"px",color:dark?invertHex(inp.color):inp.color,fontFamily:'"Literata",Georgia,serif',background:"transparent",border:"none",outline:"none",padding:"1px 2px",margin:0,minWidth:(fs*4)+"px",minHeight:(fs*1.4)+"px",resize:"none",lineHeight:"1.4",display:"block",whiteSpace:"pre",wordBreak:"normal",overflow:"hidden",boxSizing:"content-box",caretColor:dark?invertHex(inp.color):inp.color,letterSpacing:"inherit"}}/>
                       :
-                        /* ═══ Rendered text — clean, no border, looks painted on canvas ═══ */
-                        <div style={{fontSize:fs+"px",color:dark?invertHex(inp.color):inp.color,fontFamily:'"Literata",Georgia,serif',padding:"1px 2px",lineHeight:"1.4",whiteSpace:"pre-wrap",wordBreak:"break-word",userSelect:"none",WebkitUserSelect:"none",cursor:isTextTool?(isSelected?"move":"default"):"default",minHeight:(fs*1.4)+"px"}}>{inp.text||""}</div>
+                        /* ═══ Rendered text — clean, no border ═══ */
+                        <div style={{fontSize:fs+"px",color:dark?invertHex(inp.color):inp.color,fontFamily:'"Literata",Georgia,serif',padding:"1px 2px",lineHeight:"1.4",whiteSpace:"pre-wrap",wordBreak:"break-word",userSelect:"none",WebkitUserSelect:"none",cursor:canInteract?(isSelected?"move":"default"):"default",minHeight:(fs*1.4)+"px"}}>{inp.text||""}</div>
                       }
                     </div>);})}
                 </div>
