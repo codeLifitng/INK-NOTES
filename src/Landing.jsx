@@ -238,7 +238,7 @@ export default function Landing({ onStart }) {
       <footer>
         <div className="brand">✦ Ink Notes</div>
         <div className="credit">
-          handcrafted with obsession by <span>Nilay</span>
+          Your canvas for thinking freely
         </div>
         <div style={{ marginTop: '12px', fontSize: '11px', color: 'var(--muted)' }}>
           Your notes. Your device. Your rules. Always free. Always private.
