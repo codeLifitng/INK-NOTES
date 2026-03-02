@@ -16,7 +16,9 @@ export default function NoteApp({onHome}) {
   const [tool,setTool]=useState(T.PEN);
   const [color,setColor]=useState(COLORS[0]),[brushSize,setBrushSize]=useState(4),[eraserSize,setEraserSize]=useState(24),[fontSize,setFontSize]=useState(24);
   const [history,setHistory]=useState([]),[historyIndex,setHistoryIndex]=useState(-1);
-  const [pages,setPages]=useState([{id:1,name:"Page 1"}]),[currentPage,setCurrentPage]=useState(0);
+  const [folders,setFolders]=useState([{id:1,name:"My Notes",expanded:true}]);
+  const [pages,setPages]=useState([{id:1,name:"Page 1",folderId:1}]),[currentPage,setCurrentPage]=useState(0);
+  const [renamingFolder,setRenamingFolder]=useState(null),[renameFolderValue,setRenameFolderValue]=useState("");
   const [showGrid,setShowGrid]=useState(false),[showRuled,setShowRuled]=useState(false);
   const [textInputs,setTextInputs]=useState([]),[editingText,setEditingText]=useState(null);
   const [sidebarOpen,setSidebarOpen]=useState(false);
@@ -36,16 +38,18 @@ export default function NoteApp({onHome}) {
   const pressureRef=useRef(1);
   const isPanning=useRef(false),panStart=useRef({x:0,y:0}),spaceHeld=useRef(false);
   const lastPoint=useRef(null),pathPts=useRef([]),inactTimer=useRef(null),lastBackup=useRef(null);
-  const fileRef=useRef(null),renameRef=useRef(null),penDet=useRef(false),penTO=useRef(null);
+  const fileRef=useRef(null),renameRef=useRef(null),renameFolderRef=useRef(null),penDet=useRef(false),penTO=useRef(null);
   const autoPageFlag=useRef(false),dirtyPages=useRef(new Set()),pinchRef=useRef(null);
   const rectCache=useRef(null),rectFrame=useRef(0);
   const zoomRef=useRef(1);
   /* FIX: pageData keyed by PAGE ID, not index */
   const pdRef=useRef({});
+  const fldRef=useRef(folders);
   const pgRef=useRef(pages),cpRef=useRef(currentPage),tiRef=useRef(textInputs);
   const sgRef=useRef(showGrid),srRef=useRef(showRuled),darkRef=useRef(dark);
   const toolRef=useRef(tool),colorRef=useRef(color),brushRef=useRef(brushSize),eraserRef=useRef(eraserSize);
 
+  useEffect(()=>{fldRef.current=folders},[folders]);
   useEffect(()=>{pgRef.current=pages},[pages]);
   useEffect(()=>{cpRef.current=currentPage},[currentPage]);
   useEffect(()=>{tiRef.current=textInputs},[textInputs]);
@@ -66,7 +70,7 @@ export default function NoteApp({onHome}) {
   useEffect(()=>{const el=scrollRef.current;if(el)setBaseW(Math.min(el.clientWidth-PAGE_PAD*2,1400));},[sidebarOpen]);
   const compact=winW<768,tiny=winW<500;
   const th=dark?themes.dark:themes.light;
-  const blur=compact?"none":"blur(16px)",blurLg=compact?"none":"blur(20px)";
+  const blur="none",blurLg="none";
   const dW=baseW*zoom,dH=baseW*PH/PW*zoom;
 
   /* Sync active canvas refs */
@@ -87,25 +91,27 @@ export default function NoteApp({onHome}) {
   /* ═══ Canvas init — FIX: looks up saved data by page ID directly ═══ */
   const initC=useCallback((el,pid)=>{
     if(!el||cMap.current.get(pid)===el)return;cMap.current.set(pid,el);
-    const dpr=Math.min(window.devicePixelRatio||1,2);el.width=PW*dpr;el.height=PH*dpr;
-    const ctx=el.getContext("2d");ctx.scale(dpr,dpr);ctx.fillStyle="#ffffff";ctx.fillRect(0,0,PW,PH);
+    el.width=PW;el.height=PH;
+    const ctx=el.getContext("2d");ctx.fillStyle="#ffffff";ctx.fillRect(0,0,PW,PH);
     /* FIX: lookup by page ID — no pgRef dependency, no race condition */
     const saved=pdRef.current[pid];
     if(saved?.image){const img=new Image();img.onload=()=>{ctx.drawImage(img,0,0,PW,PH);};img.src=saved.image;}
   },[]);
   const initO=useCallback((el,pid)=>{
-    if(!el||oMap.current.get(pid)===el)return;oMap.current.set(pid,el);
-    const dpr=Math.min(window.devicePixelRatio||1,2);el.width=PW*dpr;el.height=PH*dpr;el.getContext("2d").scale(dpr,dpr);
+    if(!el){oMap.current.delete(pid);return;}if(oMap.current.get(pid)===el)return;oMap.current.set(pid,el);
+    el.width=PW;el.height=PH;
   },[]);
 
   /* ═══ Coordinates ═══ */
   const getPageAtPt=(e)=>{for(let i=0;i<pages.length;i++){const c=cMap.current.get(pages[i].id);if(!c)continue;const r=c.getBoundingClientRect();if(e.clientY>=r.top&&e.clientY<=r.bottom&&e.clientX>=r.left&&e.clientX<=r.right)return i;}return-1;};
   const getPos=(e)=>{const c=canvasRef.current;if(!c)return{x:0,y:0,pressure:.5};const now=performance.now();if(!rectCache.current||now-rectFrame.current>100){rectCache.current=c.getBoundingClientRect();rectFrame.current=now;}const r=rectCache.current;const t=e.touches?e.touches[0]:e;return{x:(t.clientX-r.left)/r.width*PW,y:(t.clientY-r.top)/r.height*PH,pressure:e.pressure??.5};};
-  const isPalm=(e)=>{if(e.pointerType==="pen"){if(!penDet.current){penDet.current=true;setPenActive(true);}if(penTO.current)clearTimeout(penTO.current);penTO.current=setTimeout(()=>{penDet.current=false;setPenActive(false);},5000);return false;}if(!penDet.current)return false;if(e.pointerType==="touch")return true;return false;};
+  const detectPen=(e)=>{if(e.pointerType!=="pen")return;if(!penDet.current){penDet.current=true;setPenActive(true);}if(penTO.current)clearTimeout(penTO.current);penTO.current=null;};
+  const releasePen=()=>{if(!penDet.current)return;if(penTO.current)clearTimeout(penTO.current);penTO.current=setTimeout(()=>{penDet.current=false;setPenActive(false);},5000);};
+  const isPalm=(e)=>{if(e.pointerType==="pen")return false;return penDet.current&&e.pointerType==="touch";};
   const shouldPan=()=>tool===T.HAND||spaceHeld.current;
 
   /* ═══ History ═══ */
-  const saveHist=useCallback(()=>{const c=canvasRef.current;if(!c)return;const pid=pgRef.current[cpRef.current]?.id;if(pid)dirtyPages.current.add(pid);requestAnimationFrame(()=>{const d=c.toDataURL();setHistory(p=>{const h=p.slice(0,historyIndex+1);h.push(d);return h.length>50?h.slice(-50):h;});setHistoryIndex(p=>Math.min(p+1,49));});},[historyIndex]);
+  const saveHist=useCallback(()=>{const c=canvasRef.current;if(!c)return;const pid=pgRef.current[cpRef.current]?.id;if(pid)dirtyPages.current.add(pid);requestAnimationFrame(()=>{const d=c.toDataURL();setHistory(p=>{const h=p.slice(0,historyIndex+1);h.push(d);return h.length>20?h.slice(-20):h;});setHistoryIndex(p=>Math.min(p+1,19));});},[historyIndex]);
   const restoreImg=(src)=>{const img=new Image();img.onload=()=>{const c=canvasRef.current,ctx=c.getContext("2d");ctx.clearRect(0,0,PW,PH);ctx.drawImage(img,0,0,PW,PH);};img.src=src;};
   const undo=useCallback(()=>{if(historyIndex<=0)return;setSelection(null);selSnap.current=null;restoreImg(history[historyIndex-1]);setHistoryIndex(i=>i-1);},[history,historyIndex]);
   const redo=useCallback(()=>{if(historyIndex>=history.length-1)return;setSelection(null);selSnap.current=null;restoreImg(history[historyIndex+1]);setHistoryIndex(i=>i+1);},[history,historyIndex]);
@@ -131,6 +137,7 @@ export default function NoteApp({onHome}) {
 
   /* ═══ POINTER HANDLERS ═══ */
   const handleDown=(e)=>{e.preventDefault();if(pinchRef.current)return;
+    detectPen(e);
     /* Pen detected: finger touch = scroll, reject palms & overlapping finger during draw */
     if(e.pointerType==="touch"&&penDet.current){if(e.width>20||e.height>20)return;if(e.pressure>0&&e.pressure<0.05)return;if(isDrawing.current)return;isPanning.current=true;panStart.current={x:e.clientX,y:e.clientY};return;}
     if(isPalm(e))return;rectCache.current=null;
@@ -157,7 +164,8 @@ export default function NoteApp({onHome}) {
     /* Auto-create page near bottom of last page — debounced */
     if(isDrawing.current&&currentPage===pages.length-1&&pos.y>PH-AUTO_ZONE&&![T.SELECT,T.HAND].includes(tool)&&!autoPageFlag.current){
       autoPageFlag.current=true;
-      setPages(p=>[...p,{id:Date.now(),name:`Page ${p.length+1}`}]);
+      const curFid=pgRef.current[cpRef.current]?.folderId||1;
+      setPages(p=>[...p,{id:Date.now(),name:`Page ${p.length+1}`,folderId:curFid}]);
       setTimeout(()=>scrollRef.current?.scrollBy({top:200,behavior:"smooth"}),150);
     }
     if(tool===T.SELECT&&isDraggingSel&&selection){const dx=pos.x-lastPoint.current.x,dy=pos.y-lastPoint.current.y;setSelection(p=>({...p,x:p.x+dx,y:p.y+dy}));if(selSnap.current){const c=canvasRef.current,ctx=c.getContext("2d");const img=new Image();img.onload=()=>{ctx.clearRect(0,0,PW,PH);ctx.drawImage(img,0,0,PW,PH);const tc=document.createElement("canvas");tc.width=selection.imageData.width;tc.height=selection.imageData.height;tc.getContext("2d").putImageData(selection.imageData,0,0);ctx.drawImage(tc,selection.x+dx,selection.y+dy,selection.w,selection.h);};img.src=selSnap.current;}lastPoint.current=pos;const o=overlayRef.current,octx=o.getContext("2d");octx.clearRect(0,0,PW,PH);octx.save();octx.setLineDash([6,4]);octx.strokeStyle=th.accent;octx.lineWidth=2;octx.strokeRect(selection.x+dx,selection.y+dy,selection.w,selection.h);octx.restore();return;}
@@ -177,11 +185,12 @@ export default function NoteApp({onHome}) {
   const handleUp=(e)=>{
     if(isPanning.current){isPanning.current=false;return;}
     if(tool===T.SELECT&&isDraggingSel){setIsDraggingSel(false);lastPoint.current=null;return;}
-    if(tool===T.SELECT&&isDrawing.current&&selStart){const pos=getPos(e),x=Math.min(selStart.x,pos.x),y=Math.min(selStart.y,pos.y),w=Math.abs(pos.x-selStart.x),h=Math.abs(pos.y-selStart.y);if(w>5&&h>5){const c=canvasRef.current,ctx=c.getContext("2d"),dpr=Math.min(window.devicePixelRatio||1,2);const id=ctx.getImageData(x*dpr,y*dpr,w*dpr,h*dpr);selSnap.current=c.toDataURL();ctx.fillStyle="#ffffff";ctx.fillRect(x,y,w,h);selSnap.current=c.toDataURL();setSelection({x,y,w,h,imageData:id});const tc=document.createElement("canvas");tc.width=id.width;tc.height=id.height;tc.getContext("2d").putImageData(id,0,0);ctx.drawImage(tc,x,y,w,h);const o=overlayRef.current,octx=o.getContext("2d");octx.clearRect(0,0,PW,PH);octx.save();octx.setLineDash([6,4]);octx.strokeStyle=th.accent;octx.lineWidth=2;octx.strokeRect(x,y,w,h);octx.restore();}else overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);setSelStart(null);isDrawing.current=false;return;}
+    if(tool===T.SELECT&&isDrawing.current&&selStart){const pos=getPos(e),x=Math.min(selStart.x,pos.x),y=Math.min(selStart.y,pos.y),w=Math.abs(pos.x-selStart.x),h=Math.abs(pos.y-selStart.y);if(w>5&&h>5){const c=canvasRef.current,ctx=c.getContext("2d");const id=ctx.getImageData(x,y,w,h);selSnap.current=c.toDataURL();ctx.fillStyle="#ffffff";ctx.fillRect(x,y,w,h);selSnap.current=c.toDataURL();setSelection({x,y,w,h,imageData:id});const tc=document.createElement("canvas");tc.width=id.width;tc.height=id.height;tc.getContext("2d").putImageData(id,0,0);ctx.drawImage(tc,x,y,w,h);const o=overlayRef.current,octx=o.getContext("2d");octx.clearRect(0,0,PW,PH);octx.save();octx.setLineDash([6,4]);octx.strokeStyle=th.accent;octx.lineWidth=2;octx.strokeRect(x,y,w,h);octx.restore();}else overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);setSelStart(null);isDrawing.current=false;return;}
     if(!isDrawing.current)return;
     if([T.LINE,T.ARROW,T.RECT,T.DIAMOND,T.CIRCLE].includes(tool)&&shapeStart.current){const pos=getPos(e),ctx=canvasRef.current.getContext("2d");overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);ctx.save();const ss=shapeStart.current;if(tool===T.LINE){ctx.strokeStyle=color;ctx.lineWidth=brushSize;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(ss.x,ss.y);ctx.lineTo(pos.x,pos.y);ctx.stroke();}else if(tool===T.ARROW)drawArrow(ctx,ss.x,ss.y,pos.x,pos.y,color,brushSize);else if(tool===T.RECT){ctx.strokeStyle=color;ctx.lineWidth=brushSize;ctx.lineCap="round";ctx.strokeRect(ss.x,ss.y,pos.x-ss.x,pos.y-ss.y);}else if(tool===T.DIAMOND)drawDiamond(ctx,ss.x,ss.y,pos.x-ss.x,pos.y-ss.y,color,brushSize);else if(tool===T.CIRCLE){const rx=Math.abs(pos.x-ss.x)/2,ry=Math.abs(pos.y-ss.y)/2;ctx.strokeStyle=color;ctx.lineWidth=brushSize;ctx.lineCap="round";ctx.beginPath();ctx.ellipse(ss.x+(pos.x-ss.x)/2,ss.y+(pos.y-ss.y)/2,rx,ry,0,0,Math.PI*2);ctx.stroke();}ctx.restore();shapeStart.current=null;}
     if(tool===T.HIGHLIGHTER&&pathPts.current.length>1){const ctx=canvasRef.current.getContext("2d");ctx.save();ctx.globalAlpha=.3;drawPath(ctx,pathPts.current,color,brushSize*3);ctx.restore();overlayRef.current?.getContext("2d").clearRect(0,0,PW,PH);}
     isDrawing.current=false;lastPoint.current=null;pathPts.current=[];autoPageFlag.current=false;saveHist();
+    if(e.pointerType==="pen")releasePen();
   };
 
   /* Zoom: Ctrl+Wheel */
@@ -226,7 +235,7 @@ export default function NoteApp({onHome}) {
     });
     dirtyPages.current.clear();
     pdRef.current=pd;
-    return{version:6,pages:pgRef.current,currentPage:cpRef.current,pageData:pd,settings:{showGrid:sgRef.current,showRuled:srRef.current,dark:darkRef.current}};
+    return{version:7,folders:fldRef.current,pages:pgRef.current,currentPage:cpRef.current,pageData:pd,settings:{showGrid:sgRef.current,showRuled:srRef.current,dark:darkRef.current}};
   },[]); /* FIX: no deps — uses refs only, never stale */
 
   const saveIDB=useCallback(async()=>{try{const s=collectState();await idbSet("app_state",s);setSaveStatus("saved");setTimeout(()=>setSaveStatus("idle"),1500);}catch(e){console.error("Save failed:",e);}},[collectState]);
@@ -245,12 +254,23 @@ export default function NoteApp({onHome}) {
       s.pages.forEach((pg,i)=>{if(pd[i])migrated[pg.id]=pd[i];});
       pd=migrated;
     }
+    /* Migrate to v7: add folders if missing */
+    let flds=s.folders;
+    let pgs=[...s.pages];
+    if(!flds||!flds.length){
+      flds=[{id:1,name:"My Notes",expanded:true}];
+      pgs=pgs.map(pg=>pg.folderId?pg:{...pg,folderId:1});
+    }else{
+      pgs=pgs.map(pg=>pg.folderId?pg:{...pg,folderId:flds[0].id});
+    }
     /* Set refs BEFORE state updates → canvases will find data in initC */
     pdRef.current=pd;
-    pgRef.current=s.pages;
+    fldRef.current=flds;
+    pgRef.current=pgs;
     cpRef.current=s.currentPage||0;
     /* Now trigger re-render */
-    setPages([...s.pages]); /* spread to force new array identity */
+    setFolders([...flds]);
+    setPages([...pgs]); /* spread to force new array identity */
     setCurrentPage(s.currentPage||0);
     if(s.settings){setShowGrid(s.settings.showGrid||false);setShowRuled(s.settings.showRuled||false);if(s.settings.dark!==undefined)setDark(s.settings.dark);}
   },[]);
@@ -259,17 +279,23 @@ export default function NoteApp({onHome}) {
 
   /* Lifecycle */
   useEffect(()=>{(async()=>{try{const s=await idbGet("app_state");if(s?.pages){cMap.current.clear();oMap.current.clear();restoreState(s);}}catch(e){console.error("Restore failed:",e);}setAppReady(true);})();},[]);
-  useEffect(()=>{if(!appReady)return;const i=setInterval(()=>saveIDB(),5000);return()=>clearInterval(i);},[appReady,saveIDB]);
-  const resetInact=useCallback(()=>{if(inactTimer.current)clearTimeout(inactTimer.current);inactTimer.current=setTimeout(()=>{saveIDB();dlBackup();},INACTIVITY_TIMEOUT);},[saveIDB,dlBackup]);
-  useEffect(()=>{const ev=["pointerdown","pointermove","keydown"];ev.forEach(e=>window.addEventListener(e,resetInact));resetInact();return()=>{ev.forEach(e=>window.removeEventListener(e,resetInact));};},[resetInact]);
+  useEffect(()=>{if(!appReady)return;const i=setInterval(()=>{if(!isDrawing.current&&!isPanning.current)saveIDB();},10000);return()=>clearInterval(i);},[appReady,saveIDB]);
+  const resetInact=useCallback(()=>{if(inactTimer.current)clearTimeout(inactTimer.current);inactTimer.current=setTimeout(()=>{if(!isDrawing.current)saveIDB();dlBackup();},INACTIVITY_TIMEOUT);},[saveIDB,dlBackup]);
+  useEffect(()=>{const ev=["pointerdown","keydown"];ev.forEach(e=>window.addEventListener(e,resetInact));resetInact();return()=>{ev.forEach(e=>window.removeEventListener(e,resetInact));};},[resetInact]);
   useEffect(()=>{const bu=()=>{try{const s=collectState();const r=indexedDB.open(DB_NAME,DB_VERSION);r.onsuccess=()=>r.result.transaction(STORE,"readwrite").objectStore(STORE).put(s,"app_state");}catch{}};const vis=()=>{if(document.visibilityState==="hidden")saveIDB();};window.addEventListener("beforeunload",bu);document.addEventListener("visibilitychange",vis);return()=>{window.removeEventListener("beforeunload",bu);document.removeEventListener("visibilitychange",vis);};},[collectState,saveIDB]);
 
   const clearCanvas=()=>{const ctx=canvasRef.current?.getContext("2d");if(!ctx)return;ctx.fillStyle="#ffffff";ctx.fillRect(0,0,PW,PH);setTextInputs([]);setSelection(null);selSnap.current=null;saveHist();};
   const savePD=useCallback(()=>{const pid=pages[currentPage]?.id;const c=canvasRef.current;if(!c||!pid)return;pdRef.current[pid]={image:c.toDataURL(),texts:textInputs};},[currentPage,textInputs,pages]);
   const switchPg=(i)=>{if(selection)commitSel();activatePage(i);const c=cMap.current.get(pages[i]?.id);if(c)c.scrollIntoView({behavior:"smooth",block:"center"});};
-  const addPg=()=>{savePD();const np={id:Date.now(),name:`Page ${pages.length+1}`};setPages(p=>[...p,np]);setTimeout(()=>{const c=cMap.current.get(np.id);if(c)c.scrollIntoView({behavior:"smooth",block:"center"});},200);};
+  const addPg=(folderId)=>{savePD();const fid=folderId||pages[currentPage]?.folderId||folders[0]?.id||1;const np={id:Date.now(),name:`Page ${pages.length+1}`,folderId:fid};setPages(p=>[...p,np]);setFolders(f=>f.map(fl=>fl.id===fid?{...fl,expanded:true}:fl));setTimeout(()=>{const c=cMap.current.get(np.id);if(c)c.scrollIntoView({behavior:"smooth",block:"center"});},200);};
+  const deletePage=(pageIdx)=>{if(pages.length<=1){alert("Cannot delete the only page.");return;}savePD();const pg=pages[pageIdx];const newPages=pages.filter((_,i)=>i!==pageIdx);const newIdx=pageIdx>=newPages.length?newPages.length-1:pageIdx;cMap.current.delete(pg.id);oMap.current.delete(pg.id);delete pdRef.current[pg.id];setPages(newPages);setCurrentPage(newIdx);pgRef.current=newPages;cpRef.current=newIdx;const nPid=newPages[newIdx]?.id;canvasRef.current=cMap.current.get(nPid);overlayRef.current=oMap.current.get(nPid);setTextInputs(pdRef.current[nPid]?.texts||[]);setHistory([]);setHistoryIndex(-1);};
+  const addFolder=()=>{const nf={id:Date.now(),name:`Folder ${folders.length+1}`,expanded:true};setFolders(f=>[...f,nf]);setRenamingFolder(nf.id);setRenameFolderValue(nf.name);setTimeout(()=>renameFolderRef.current?.focus(),50);};
+  const deleteFolder=(folderId)=>{const folderPages=pages.filter(p=>p.folderId===folderId);const remaining=pages.filter(p=>p.folderId!==folderId);if(remaining.length===0){alert("Cannot delete the only folder with all pages.");return;}if(folderPages.length>0&&!confirm(`Delete folder and ${folderPages.length} page(s)?`))return;folderPages.forEach(pg=>{cMap.current.delete(pg.id);oMap.current.delete(pg.id);delete pdRef.current[pg.id];});const curPg=pages[currentPage];const newPages=remaining;let newIdx=newPages.findIndex(p=>p.id===curPg?.id);if(newIdx<0)newIdx=0;setFolders(f=>f.filter(fl=>fl.id!==folderId));setPages(newPages);setCurrentPage(newIdx);pgRef.current=newPages;cpRef.current=newIdx;const nPid=newPages[newIdx]?.id;canvasRef.current=cMap.current.get(nPid);overlayRef.current=oMap.current.get(nPid);setTextInputs(pdRef.current[nPid]?.texts||[]);setHistory([]);setHistoryIndex(-1);};
+  const toggleFolder=(folderId)=>{setFolders(f=>f.map(fl=>fl.id===folderId?{...fl,expanded:!fl.expanded}:fl));};
   const startRename=(i)=>{setRenamingPage(i);setRenameValue(pages[i].name);setTimeout(()=>renameRef.current?.focus(),50);};
   const finishRename=()=>{if(renamingPage!==null&&renameValue.trim())setPages(p=>p.map((pg,i)=>i===renamingPage?{...pg,name:renameValue.trim()}:pg));setRenamingPage(null);};
+  const startFolderRename=(fid)=>{const fl=folders.find(f=>f.id===fid);if(!fl)return;setRenamingFolder(fid);setRenameFolderValue(fl.name);setTimeout(()=>renameFolderRef.current?.focus(),50);};
+  const finishFolderRename=()=>{if(renamingFolder!==null&&renameFolderValue.trim())setFolders(f=>f.map(fl=>fl.id===renamingFolder?{...fl,name:renameFolderValue.trim()}:fl));setRenamingFolder(null);};
 
   /* Export */
   const getExportDataUrl=()=>{const c=canvasRef.current;if(!c)return"";if(!dark)return c.toDataURL();const tc=document.createElement("canvas");tc.width=c.width;tc.height=c.height;const tctx=tc.getContext("2d");tctx.filter="invert(1) hue-rotate(180deg)";tctx.drawImage(c,0,0);return tc.toDataURL();};
@@ -290,16 +316,15 @@ export default function NoteApp({onHome}) {
   /* ═══════ RENDER ═══════ */
   return (
     <div style={{width:"100vw",height:"100vh",display:"flex",flexDirection:"column",background:th.bg,fontFamily:'"DM Sans",system-ui,sans-serif',overflow:"hidden",userSelect:"none",WebkitUserSelect:"none",WebkitTouchCallout:"none",WebkitTextSizeAdjust:"100%"}}>
-      <link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
       <style>{`
         *{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important;-webkit-tap-highlight-color:transparent!important}
         textarea,input{-webkit-user-select:text!important;user-select:text!important}
         canvas{touch-action:none}
       `}</style>
       {/* Upload Modal */}
-      {showUploadModal&&<div style={{position:"fixed",inset:0,background:dark?"rgba(0,0,0,.6)":"rgba(44,36,24,.3)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(12px)"}} onClick={()=>setShowUploadModal(false)}><div onClick={e=>e.stopPropagation()} style={{background:th.surface,borderRadius:"24px",padding:"40px",maxWidth:"380px",width:"90%",boxShadow:th.shadowLg,textAlign:"center",border:`1px solid ${th.border}`}}><div style={{width:"52px",height:"52px",borderRadius:"16px",background:th.accentGrad,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 18px",color:"#fff"}}>{I.upload}</div><h2 style={{margin:"0 0 6px",fontSize:"18px",color:th.text,fontWeight:700,fontFamily:'"Literata",Georgia,serif'}}>Restore Notes</h2><p style={{margin:"0 0 24px",fontSize:"13px",color:th.textSecondary}}>Upload a .json backup</p><input ref={fileRef} type="file" accept=".json" onChange={handleUpload} style={{display:"none"}}/><button onClick={()=>fileRef.current?.click()} style={{width:"100%",padding:"14px",borderRadius:"14px",border:`2px dashed ${th.border}`,background:th.surfaceHover,cursor:"pointer",fontSize:"13px",fontWeight:600,color:th.text,marginBottom:"10px",fontFamily:"inherit"}}>Choose File</button><button onClick={()=>setShowUploadModal(false)} style={{width:"100%",padding:"10px",borderRadius:"14px",border:"none",background:"transparent",cursor:"pointer",fontSize:"13px",color:th.textMuted}}>Cancel</button></div></div>}
+      {showUploadModal&&<div style={{position:"fixed",inset:0,background:dark?"rgba(0,0,0,.6)":"rgba(44,36,24,.3)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"none"}} onClick={()=>setShowUploadModal(false)}><div onClick={e=>e.stopPropagation()} style={{background:th.surface,borderRadius:"24px",padding:"40px",maxWidth:"380px",width:"90%",boxShadow:th.shadowLg,textAlign:"center",border:`1px solid ${th.border}`}}><div style={{width:"52px",height:"52px",borderRadius:"16px",background:th.accentGrad,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 18px",color:"#fff"}}>{I.upload}</div><h2 style={{margin:"0 0 6px",fontSize:"18px",color:th.text,fontWeight:700,fontFamily:'"Literata",Georgia,serif'}}>Restore Notes</h2><p style={{margin:"0 0 24px",fontSize:"13px",color:th.textSecondary}}>Upload a .json backup</p><input ref={fileRef} type="file" accept=".json" onChange={handleUpload} style={{display:"none"}}/><button onClick={()=>fileRef.current?.click()} style={{width:"100%",padding:"14px",borderRadius:"14px",border:`2px dashed ${th.border}`,background:th.surfaceHover,cursor:"pointer",fontSize:"13px",fontWeight:600,color:th.text,marginBottom:"10px",fontFamily:"inherit"}}>Choose File</button><button onClick={()=>setShowUploadModal(false)} style={{width:"100%",padding:"10px",borderRadius:"14px",border:"none",background:"transparent",cursor:"pointer",fontSize:"13px",color:th.textMuted}}>Cancel</button></div></div>}
       {/* Email Modal */}
-      {showEmailModal&&<div style={{position:"fixed",inset:0,background:dark?"rgba(0,0,0,.6)":"rgba(44,36,24,.3)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(12px)"}} onClick={()=>setShowEmailModal(false)}><div onClick={e=>e.stopPropagation()} style={{background:th.surface,borderRadius:"24px",padding:"36px",maxWidth:"400px",width:"90%",boxShadow:th.shadowLg,border:`1px solid ${th.border}`}}><div style={{display:"flex",alignItems:"center",gap:"14px",marginBottom:"24px"}}><div style={{width:"44px",height:"44px",borderRadius:"14px",background:th.accentGrad,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",flexShrink:0}}>{I.mail}</div><div><h2 style={{margin:0,fontSize:"17px",color:th.text,fontWeight:700,fontFamily:'"Literata",Georgia,serif'}}>Share Note</h2><p style={{margin:"2px 0 0",fontSize:"11px",color:th.textMuted}}>Send current page as image</p></div></div><label style={{display:"block",fontSize:"10px",fontWeight:700,color:th.textMuted,letterSpacing:".8px",marginBottom:"6px",textTransform:"uppercase"}}>To</label><input type="email" value={emailTo} onChange={e=>setEmailTo(e.target.value)} placeholder="name@example.com" autoFocus onKeyDown={e=>{if(e.key==="Enter")sendEmail();if(e.key==="Escape")setShowEmailModal(false);}} style={{width:"100%",padding:"11px 14px",borderRadius:"12px",border:`1.5px solid ${th.border}`,background:th.surfaceHover,color:th.text,fontSize:"14px",outline:"none",boxSizing:"border-box",fontFamily:"inherit",marginBottom:"14px"}} onFocus={e=>e.target.style.borderColor=th.accent} onBlur={e=>e.target.style.borderColor=th.border}/><label style={{display:"block",fontSize:"10px",fontWeight:700,color:th.textMuted,letterSpacing:".8px",marginBottom:"6px",textTransform:"uppercase"}}>Subject</label><input type="text" value={emailSubject} onChange={e=>setEmailSubject(e.target.value)} style={{width:"100%",padding:"11px 14px",borderRadius:"12px",border:`1.5px solid ${th.border}`,background:th.surfaceHover,color:th.text,fontSize:"14px",outline:"none",boxSizing:"border-box",fontFamily:"inherit",marginBottom:"18px"}} onFocus={e=>e.target.style.borderColor=th.accent} onBlur={e=>e.target.style.borderColor=th.border}/>{emailPreview&&<div style={{marginBottom:"18px",borderRadius:"12px",overflow:"hidden",border:`1px solid ${th.border}`,background:th.bg,padding:"8px",display:"flex",justifyContent:"center"}}><img src={emailPreview} alt="" style={{maxWidth:"100%",maxHeight:"100px",borderRadius:"8px",objectFit:"contain"}}/></div>}<div style={{display:"flex",gap:"10px"}}><button onClick={()=>setShowEmailModal(false)} style={{flex:1,padding:"12px",borderRadius:"12px",border:`1px solid ${th.border}`,background:"transparent",cursor:"pointer",fontSize:"13px",fontWeight:600,color:th.textSecondary,fontFamily:"inherit"}}>Cancel</button><button onClick={sendEmail} disabled={emailSending||!emailTo.includes("@")} style={{flex:2,padding:"12px",borderRadius:"12px",border:"none",cursor:emailTo.includes("@")?"pointer":"not-allowed",background:emailTo.includes("@")?th.accentGrad:th.surfaceActive,color:emailTo.includes("@")?"#fff":th.textMuted,fontSize:"13px",fontWeight:700,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"6px"}}>{emailSending?"Sending...":<>{I.send} Send</>}</button></div></div></div>}
+      {showEmailModal&&<div style={{position:"fixed",inset:0,background:dark?"rgba(0,0,0,.6)":"rgba(44,36,24,.3)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"none"}} onClick={()=>setShowEmailModal(false)}><div onClick={e=>e.stopPropagation()} style={{background:th.surface,borderRadius:"24px",padding:"36px",maxWidth:"400px",width:"90%",boxShadow:th.shadowLg,border:`1px solid ${th.border}`}}><div style={{display:"flex",alignItems:"center",gap:"14px",marginBottom:"24px"}}><div style={{width:"44px",height:"44px",borderRadius:"14px",background:th.accentGrad,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",flexShrink:0}}>{I.mail}</div><div><h2 style={{margin:0,fontSize:"17px",color:th.text,fontWeight:700,fontFamily:'"Literata",Georgia,serif'}}>Share Note</h2><p style={{margin:"2px 0 0",fontSize:"11px",color:th.textMuted}}>Send current page as image</p></div></div><label style={{display:"block",fontSize:"10px",fontWeight:700,color:th.textMuted,letterSpacing:".8px",marginBottom:"6px",textTransform:"uppercase"}}>To</label><input type="email" value={emailTo} onChange={e=>setEmailTo(e.target.value)} placeholder="name@example.com" autoFocus onKeyDown={e=>{if(e.key==="Enter")sendEmail();if(e.key==="Escape")setShowEmailModal(false);}} style={{width:"100%",padding:"11px 14px",borderRadius:"12px",border:`1.5px solid ${th.border}`,background:th.surfaceHover,color:th.text,fontSize:"14px",outline:"none",boxSizing:"border-box",fontFamily:"inherit",marginBottom:"14px"}} onFocus={e=>e.target.style.borderColor=th.accent} onBlur={e=>e.target.style.borderColor=th.border}/><label style={{display:"block",fontSize:"10px",fontWeight:700,color:th.textMuted,letterSpacing:".8px",marginBottom:"6px",textTransform:"uppercase"}}>Subject</label><input type="text" value={emailSubject} onChange={e=>setEmailSubject(e.target.value)} style={{width:"100%",padding:"11px 14px",borderRadius:"12px",border:`1.5px solid ${th.border}`,background:th.surfaceHover,color:th.text,fontSize:"14px",outline:"none",boxSizing:"border-box",fontFamily:"inherit",marginBottom:"18px"}} onFocus={e=>e.target.style.borderColor=th.accent} onBlur={e=>e.target.style.borderColor=th.border}/>{emailPreview&&<div style={{marginBottom:"18px",borderRadius:"12px",overflow:"hidden",border:`1px solid ${th.border}`,background:th.bg,padding:"8px",display:"flex",justifyContent:"center"}}><img src={emailPreview} alt="" style={{maxWidth:"100%",maxHeight:"100px",borderRadius:"8px",objectFit:"contain"}}/></div>}<div style={{display:"flex",gap:"10px"}}><button onClick={()=>setShowEmailModal(false)} style={{flex:1,padding:"12px",borderRadius:"12px",border:`1px solid ${th.border}`,background:"transparent",cursor:"pointer",fontSize:"13px",fontWeight:600,color:th.textSecondary,fontFamily:"inherit"}}>Cancel</button><button onClick={sendEmail} disabled={emailSending||!emailTo.includes("@")} style={{flex:2,padding:"12px",borderRadius:"12px",border:"none",cursor:emailTo.includes("@")?"pointer":"not-allowed",background:emailTo.includes("@")?th.accentGrad:th.surfaceActive,color:emailTo.includes("@")?"#fff":th.textMuted,fontSize:"13px",fontWeight:700,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"6px"}}>{emailSending?"Sending...":<>{I.send} Send</>}</button></div></div></div>}
 
       {/* ═══ TOP BAR ═══ */}
       <div style={{position:"absolute",top:0,left:0,right:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"space-between",padding:compact?"8px 12px":"10px 20px",pointerEvents:"none"}}>
@@ -310,13 +335,13 @@ export default function NoteApp({onHome}) {
 
       {/* ═══ VERTICAL TOOL DOCK ═══ */}
       {!compact&&<div style={{position:"absolute",left:"16px",top:"50%",transform:"translateY(-50%)",zIndex:100,display:"flex",flexDirection:"column",alignItems:"center",gap:"2px",background:th.toolbar,backdropFilter:blurLg,border:`1px solid ${th.toolbarBorder}`,borderRadius:"20px",padding:"8px 6px",boxShadow:th.shadow}}>
-        {toolDock.map((item,i)=>item==="sep"?<div key={i} style={{width:"22px",height:"1px",background:th.border,margin:"4px 0"}}/>:(<div key={item.id} style={{position:"relative"}} onMouseEnter={()=>setHoveredTool(item.id)} onMouseLeave={()=>setHoveredTool(null)}><button onClick={()=>setTool(item.id)} style={{width:"38px",height:"38px",borderRadius:"12px",border:"none",background:tool===item.id?th.accentGrad:"transparent",color:tool===item.id?"#fff":th.textSecondary,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all .15s",boxShadow:tool===item.id?th.glow:"none",transform:tool===item.id?"scale(1.05)":"scale(1)"}}>{item.icon}</button>{hoveredTool===item.id&&tool!==item.id&&<div style={{position:"absolute",left:"48px",top:"50%",transform:"translateY(-50%)",background:th.surface,border:`1px solid ${th.border}`,borderRadius:"8px",padding:"4px 10px",fontSize:"11px",fontWeight:600,color:th.text,whiteSpace:"nowrap",boxShadow:th.shadow,pointerEvents:"none",zIndex:200}}>{item.tip}</div>}</div>))}
+        {toolDock.map((item,i)=>item==="sep"?<div key={i} style={{width:"22px",height:"1px",background:th.border,margin:"4px 0"}}/>:(<div key={item.id} style={{position:"relative"}} onMouseEnter={()=>setHoveredTool(item.id)} onMouseLeave={()=>setHoveredTool(null)}><button onClick={()=>setTool(item.id)} style={{width:"38px",height:"38px",borderRadius:"12px",border:"none",background:tool===item.id?th.accentGrad:"transparent",color:tool===item.id?"#fff":th.textSecondary,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:tool===item.id?th.glow:"none"}}>{item.icon}</button>{hoveredTool===item.id&&tool!==item.id&&<div style={{position:"absolute",left:"48px",top:"50%",transform:"translateY(-50%)",background:th.surface,border:`1px solid ${th.border}`,borderRadius:"8px",padding:"4px 10px",fontSize:"11px",fontWeight:600,color:th.text,whiteSpace:"nowrap",boxShadow:th.shadow,pointerEvents:"none",zIndex:200}}>{item.tip}</div>}</div>))}
       </div>}
       {compact&&<div style={{position:"absolute",top:"52px",left:"50%",transform:"translateX(-50%)",zIndex:100,display:"flex",gap:"2px",background:th.toolbar,backdropFilter:blur,border:`1px solid ${th.toolbarBorder}`,borderRadius:"16px",padding:"4px",boxShadow:th.shadow,overflowX:"auto",maxWidth:"calc(100vw - 24px)"}}>{toolDock.filter(t=>t!=="sep"&&![T.LINE,T.DIAMOND].includes(t?.id)).map(item=>(<button key={item.id} onClick={()=>setTool(item.id)} style={{width:"34px",height:"34px",borderRadius:"10px",border:"none",background:tool===item.id?th.accentGrad:"transparent",color:tool===item.id?"#fff":th.textSecondary,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:tool===item.id?th.glow:"none"}}>{item.icon}</button>))}</div>}
 
       {/* ═══ BOTTOM CONTEXT BAR ═══ */}
       <div style={{position:"absolute",bottom:compact?"10px":"16px",left:"50%",transform:"translateX(-50%)",zIndex:100,display:"flex",gap:compact?"6px":"10px",alignItems:"center",flexWrap:"wrap",justifyContent:"center",maxWidth:"calc(100vw - 32px)"}}>
-        {![T.ERASER,T.SELECT,T.HAND].includes(tool)&&<div style={{display:"flex",alignItems:"center",gap:"3px",background:th.toolbar,backdropFilter:blur,borderRadius:"16px",padding:compact?"5px 8px":"6px 12px",border:`1px solid ${th.toolbarBorder}`,boxShadow:th.shadow}}>{COLORS.map((c,i)=>(<button key={i} onClick={()=>setColor(c)} style={{width:color===c?"22px":"16px",height:color===c?"22px":"16px",borderRadius:"50%",border:color===c?`2.5px solid ${th.accent}`:"2px solid transparent",background:c,cursor:"pointer",transition:"all .2s",boxShadow:color===c?`0 0 8px ${c}40`:"none",flexShrink:0}}/>))}</div>}
+        {![T.ERASER,T.SELECT,T.HAND].includes(tool)&&<div style={{display:"flex",alignItems:"center",gap:"3px",background:th.toolbar,backdropFilter:blur,borderRadius:"16px",padding:compact?"5px 8px":"6px 12px",border:`1px solid ${th.toolbarBorder}`,boxShadow:th.shadow}}>{COLORS.map((c,i)=>(<button key={i} onClick={()=>setColor(c)} style={{width:color===c?"22px":"16px",height:color===c?"22px":"16px",borderRadius:"50%",border:color===c?`2.5px solid ${th.accent}`:"2px solid transparent",background:c,cursor:"pointer",boxShadow:color===c?`0 0 8px ${c}40`:"none",flexShrink:0}}/>))}</div>}
         {[T.PEN,T.HIGHLIGHTER,T.LINE,T.ARROW,T.RECT,T.DIAMOND,T.CIRCLE].includes(tool)&&<div style={{display:"flex",alignItems:"center",gap:"3px",background:th.toolbar,backdropFilter:blur,borderRadius:"16px",padding:compact?"5px 8px":"6px 10px",border:`1px solid ${th.toolbarBorder}`,boxShadow:th.shadow}}>{BRUSH_SIZES.map(sz=>(<button key={sz} onClick={()=>setBrushSize(sz)} style={{width:"28px",height:"28px",borderRadius:"9px",border:brushSize===sz?`2px solid ${th.accent}`:"1px solid transparent",background:brushSize===sz?th.accentSoft:"transparent",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><div style={{width:Math.min(sz*1.5,14)+"px",height:Math.min(sz*1.5,14)+"px",borderRadius:"50%",background:color}}/></button>))}</div>}
         {tool===T.ERASER&&<div style={{display:"flex",alignItems:"center",gap:"3px",background:th.toolbar,backdropFilter:blur,borderRadius:"16px",padding:compact?"5px 8px":"6px 10px",border:`1px solid ${th.toolbarBorder}`,boxShadow:th.shadow}}>{ERASER_SIZES.map(sz=>(<button key={sz} onClick={()=>setEraserSize(sz)} style={{width:"30px",height:"30px",borderRadius:"9px",border:eraserSize===sz?`2px solid ${th.accent}`:"1px solid transparent",background:eraserSize===sz?th.accentSoft:"transparent",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><div style={{width:Math.min(sz*.5,18)+"px",height:Math.min(sz*.5,18)+"px",borderRadius:"4px",background:th.textMuted,opacity:.35}}/></button>))}<span style={{fontSize:"10px",color:th.textMuted,marginLeft:"2px"}}>{eraserSize}</span></div>}
         {tool===T.TEXT&&<div style={{display:"flex",alignItems:"center",gap:"3px",background:th.toolbar,backdropFilter:blur,borderRadius:"16px",padding:compact?"5px 8px":"6px 10px",border:`1px solid ${th.toolbarBorder}`,boxShadow:th.shadow}}>{FONT_SIZES.map(sz=>(<button key={sz} onClick={()=>setFontSize(sz)} style={{padding:"4px 7px",borderRadius:"8px",border:fontSize===sz?`2px solid ${th.accent}`:"1px solid transparent",background:fontSize===sz?th.accentSoft:"transparent",cursor:"pointer",fontSize:"10px",fontWeight:700,color:fontSize===sz?th.accent:th.textMuted,flexShrink:0}}>{sz}</button>))}</div>}
@@ -334,9 +359,26 @@ export default function NoteApp({onHome}) {
       {/* ═══ MAIN AREA ═══ */}
       <div style={{display:"flex",flex:1,overflow:"hidden",position:"relative"}}>
         {sidebarOpen&&<div style={{width:compact?"200px":"240px",background:th.surface,borderRight:`1px solid ${th.border}`,padding:`${compact?52:56}px 14px 14px`,overflowY:"auto",zIndex:90}}>
-          <div style={{fontSize:"9px",fontWeight:700,color:th.textMuted,letterSpacing:"1.2px",marginBottom:"10px",textTransform:"uppercase"}}>Pages</div>
-          {pages.map((pg,i)=>(<div key={pg.id} style={{display:"flex",alignItems:"center",marginBottom:"2px",borderRadius:"10px",background:currentPage===i?th.surfaceHover:"transparent"}}>{renamingPage===i?<input ref={renameRef} value={renameValue} onChange={e=>setRenameValue(e.target.value)} onBlur={finishRename} onKeyDown={e=>{if(e.key==="Enter")finishRename();if(e.key==="Escape")setRenamingPage(null);}} style={{flex:1,padding:"8px 10px",borderRadius:"8px",border:`2px solid ${th.accent}`,outline:"none",fontSize:"12px",fontWeight:600,color:th.text,background:th.accentSoft,fontFamily:"inherit"}}/>:<button onClick={()=>switchPg(i)} onDoubleClick={()=>startRename(i)} style={{flex:1,textAlign:"left",padding:"9px 12px",borderRadius:"10px",border:"none",background:"transparent",cursor:"pointer",fontSize:"12px",fontWeight:currentPage===i?700:500,color:currentPage===i?th.text:th.textSecondary,fontFamily:'"Literata",Georgia,serif'}}>{pg.name}</button>}{renamingPage!==i&&<button onClick={()=>startRename(i)} style={{background:"none",border:"none",cursor:"pointer",padding:"4px 6px",color:th.textMuted,opacity:currentPage===i?.7:.25,flexShrink:0}}>{I.edit}</button>}</div>))}
-          <button onClick={addPg} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"5px",width:"100%",padding:"9px",marginTop:"8px",borderRadius:"10px",border:`1.5px dashed ${th.border}`,background:"transparent",cursor:"pointer",fontSize:"11px",fontWeight:600,color:th.textMuted,fontFamily:"inherit"}}>{I.plus} New Page</button>
+          <button onClick={addFolder} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"5px",width:"100%",padding:"8px",marginBottom:"12px",borderRadius:"10px",border:`1.5px dashed ${th.border}`,background:"transparent",cursor:"pointer",fontSize:"11px",fontWeight:600,color:th.textMuted,fontFamily:"inherit"}}>{I.plus} New Folder</button>
+          {folders.map(fl=>{const folderPages=pages.map((pg,i)=>({...pg,_idx:i})).filter(pg=>pg.folderId===fl.id);return(
+            <div key={fl.id} style={{marginBottom:"6px"}}>
+              {/* Folder header */}
+              <div style={{display:"flex",alignItems:"center",borderRadius:"8px",padding:"2px 0",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.querySelector('.fld-del')&&(e.currentTarget.querySelector('.fld-del').style.opacity='0.6')} onMouseLeave={e=>e.currentTarget.querySelector('.fld-del')&&(e.currentTarget.querySelector('.fld-del').style.opacity='0')}>
+                <button onClick={()=>toggleFolder(fl.id)} style={{background:"none",border:"none",cursor:"pointer",padding:"4px 2px",color:th.textMuted,display:"flex",alignItems:"center",flexShrink:0}}>{fl.expanded?I.chevronDown:I.chevronRight}</button>
+                {renamingFolder===fl.id?<input ref={renameFolderRef} value={renameFolderValue} onChange={e=>setRenameFolderValue(e.target.value)} onBlur={finishFolderRename} onKeyDown={e=>{if(e.key==="Enter")finishFolderRename();if(e.key==="Escape")setRenamingFolder(null);}} style={{flex:1,padding:"5px 8px",borderRadius:"6px",border:`2px solid ${th.accent}`,outline:"none",fontSize:"11px",fontWeight:700,color:th.text,background:th.accentSoft,fontFamily:"inherit"}}/>:<button onClick={()=>toggleFolder(fl.id)} onDoubleClick={()=>startFolderRename(fl.id)} style={{flex:1,textAlign:"left",padding:"5px 4px",borderRadius:"6px",border:"none",background:"transparent",cursor:"pointer",fontSize:"11px",fontWeight:700,color:th.text,fontFamily:'"Literata",Georgia,serif',display:"flex",alignItems:"center",gap:"5px"}}><span style={{color:th.textMuted}}>{fl.expanded?I.folderOpen:I.folder}</span>{fl.name}</button>}
+                <button className="fld-del" onClick={(e)=>{e.stopPropagation();deleteFolder(fl.id);}} style={{background:"none",border:"none",cursor:"pointer",padding:"4px",color:th.danger,opacity:0,flexShrink:0,transition:"opacity .15s"}}>{I.trash}</button>
+              </div>
+              {/* Pages in folder */}
+              {fl.expanded&&<div style={{paddingLeft:"12px"}}>
+                {folderPages.map(pg=>{const i=pg._idx;return(
+                  <div key={pg.id} style={{display:"flex",alignItems:"center",marginBottom:"1px",borderRadius:"8px",background:currentPage===i?th.surfaceHover:"transparent"}} onMouseEnter={e=>e.currentTarget.querySelector('.pg-del')&&(e.currentTarget.querySelector('.pg-del').style.opacity='0.6')} onMouseLeave={e=>e.currentTarget.querySelector('.pg-del')&&(e.currentTarget.querySelector('.pg-del').style.opacity='0')}>
+                    {renamingPage===i?<input ref={renameRef} value={renameValue} onChange={e=>setRenameValue(e.target.value)} onBlur={finishRename} onKeyDown={e=>{if(e.key==="Enter")finishRename();if(e.key==="Escape")setRenamingPage(null);}} style={{flex:1,padding:"6px 8px",borderRadius:"6px",border:`2px solid ${th.accent}`,outline:"none",fontSize:"11px",fontWeight:600,color:th.text,background:th.accentSoft,fontFamily:"inherit"}}/>:<button onClick={()=>switchPg(i)} onDoubleClick={()=>startRename(i)} style={{flex:1,textAlign:"left",padding:"7px 10px",borderRadius:"8px",border:"none",background:"transparent",cursor:"pointer",fontSize:"11px",fontWeight:currentPage===i?700:500,color:currentPage===i?th.text:th.textSecondary,fontFamily:'"Literata",Georgia,serif'}}>{pg.name}</button>}
+                    {renamingPage!==i&&<button onClick={()=>startRename(i)} style={{background:"none",border:"none",cursor:"pointer",padding:"3px 4px",color:th.textMuted,opacity:currentPage===i?.7:.2,flexShrink:0}}>{I.edit}</button>}
+                    <button className="pg-del" onClick={(e)=>{e.stopPropagation();deletePage(i);}} style={{background:"none",border:"none",cursor:"pointer",padding:"3px 4px",color:th.danger,opacity:0,flexShrink:0,transition:"opacity .15s"}}>{I.trash}</button>
+                  </div>);})}
+                <button onClick={()=>addPg(fl.id)} style={{display:"flex",alignItems:"center",gap:"4px",width:"100%",padding:"6px 10px",marginTop:"2px",borderRadius:"8px",border:"none",background:"transparent",cursor:"pointer",fontSize:"10px",fontWeight:600,color:th.textMuted,fontFamily:"inherit",opacity:.6}}>{I.plus} New Page</button>
+              </div>}
+            </div>);})}
           <div style={{marginTop:"24px",paddingTop:"16px",borderTop:`1px solid ${th.border}`,textAlign:"center"}}><div style={{fontSize:"13px",fontWeight:700,color:th.text,fontFamily:'"Literata",Georgia,serif'}}>Ink Notes</div><div style={{fontSize:"9px",color:th.textMuted,marginTop:"2px",fontStyle:"italic"}}>by <span style={{fontWeight:600,color:th.accent}}>Nilay</span></div></div>
         </div>}
 
@@ -346,10 +388,10 @@ export default function NoteApp({onHome}) {
             {pages.map((pg,idx)=>(
               <div key={pg.id}>
                 {idx>0&&<div style={{display:"flex",alignItems:"center",gap:"12px",padding:`${PAGE_GAP/2}px 0`,width:dW+"px",maxWidth:"100%",userSelect:"none"}}><div style={{flex:1,height:"1px",background:th.border,opacity:.5}}/><span style={{fontSize:"10px",fontWeight:700,color:th.textMuted,letterSpacing:"1.5px",textTransform:"uppercase",whiteSpace:"nowrap"}}>Page {idx+1}</span><div style={{flex:1,height:"1px",background:th.border,opacity:.5}}/></div>}
-                <div style={{width:dW+"px",height:dH+"px",position:"relative",borderRadius:Math.max(4,8*zoom)+"px",overflow:"hidden",boxShadow:th.pageShadow,background:"#fff",touchAction:"none"}}>
+                <div style={{width:dW+"px",height:dH+"px",position:"relative",borderRadius:Math.max(4,8*zoom)+"px",overflow:"hidden",boxShadow:compact?"0 0 0 1px rgba(0,0,0,0.06)":th.pageShadow,background:"#fff",touchAction:"none"}}>
                   <div style={{width:"100%",height:"100%",filter:dark?"invert(1) hue-rotate(180deg)":"none"}}>
                     <canvas ref={el=>initC(el,pg.id)} style={{width:"100%",height:"100%",display:"block"}}/>
-                    <canvas ref={el=>initO(el,pg.id)} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",pointerEvents:"none"}}/>
+                    {currentPage===idx&&<canvas ref={el=>initO(el,pg.id)} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",pointerEvents:"none"}}/>}
                   </div>
                   {currentPage===idx&&<div style={{position:"absolute",top:0,left:0,right:0,height:Math.max(2,3*zoom)+"px",background:th.accentGrad,transition:"opacity .2s"}}/>}
                   {currentPage===idx&&textInputs.map(inp=>{const sx=inp.x/PW*dW,sy=inp.y/PH*dH,fs=inp.fontSize/PW*dW;return(<textarea key={inp.id} autoFocus={editingText===inp.id} value={inp.text} onChange={e=>setTextInputs(p=>p.map(t=>t.id===inp.id?{...t,text:e.target.value}:t))} onBlur={()=>textBlur(inp.id)} onKeyDown={e=>{if(e.key==="Escape")e.target.blur();}} style={{position:"absolute",left:sx+"px",top:sy+"px",fontSize:fs+"px",color:dark?invertHex(inp.color):inp.color,fontFamily:'"Literata",Georgia,serif',background:dark?"rgba(21,18,16,.95)":"rgba(255,252,247,.95)",border:`2px solid ${th.accent}`,borderRadius:"8px",outline:"none",padding:"6px 10px",minWidth:"60px",minHeight:fs*1.5+"px",resize:"both",lineHeight:1.4,zIndex:20,boxShadow:th.shadow}}/>);})}
