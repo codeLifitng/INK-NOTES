@@ -296,7 +296,10 @@ export default function NoteApp({onHome}) {
     setFolders([...flds]);
     setPages([...pgs]); /* spread to force new array identity */
     setCurrentPage(s.currentPage||0);
-    if(s.settings){/* v8: grid/ruled changed from canvas-baked to CSS overlay — reset to avoid double lines */if((s.version||0)<8){setShowGrid(false);setShowRuled(false);}else{setShowGrid(s.settings.showGrid||false);setShowRuled(s.settings.showRuled||false);}if(s.settings.dark!==undefined)setDark(s.settings.dark);}
+    /* v8: grid/ruled moved from canvas-baked to CSS overlay — wipe old baked-in lines */
+    if((s.version||0)<8){Object.keys(pd).forEach(k=>{pd[k]={texts:pd[k]?.texts||[]};});setShowGrid(false);setShowRuled(false);}
+    else if(s.settings){setShowGrid(s.settings.showGrid||false);setShowRuled(s.settings.showRuled||false);}
+    if(s.settings?.dark!==undefined)setDark(s.settings.dark);
   },[]);
 
   const handleUpload=useCallback((e)=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=(ev)=>{try{const s=JSON.parse(ev.target.result);cMap.current.clear();oMap.current.clear();restoreState(s);idbSet("app_state",s);setShowUploadModal(false);}catch{alert("Invalid backup.");}};r.readAsText(f);},[restoreState]);
