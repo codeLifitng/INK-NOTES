@@ -3,8 +3,63 @@ import './Landing.css';
 
 export default function Landing({ onStart }) {
   const statsRef = useRef(null);
+  const canvasRef = useRef(null);
   const [statsVisible, setStatsVisible] = useState(false);
   const [statValues, setStatValues] = useState({ cost: '', servers: '', data: '', pages: '' });
+
+  // Floating particles background
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let raf;
+    const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
+    resize();
+    window.addEventListener('resize', resize);
+
+    const count = Math.min(60, Math.floor(window.innerWidth / 25));
+    const particles = Array.from({ length: count }, () => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      r: Math.random() * 1.5 + 0.5,
+      dx: (Math.random() - 0.5) * 0.3,
+      dy: -(Math.random() * 0.4 + 0.1),
+      o: Math.random() * 0.3 + 0.05,
+    }));
+
+    const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (const p of particles) {
+        p.x += p.dx;
+        p.y += p.dy;
+        if (p.y < -10) { p.y = canvas.height + 10; p.x = Math.random() * canvas.width; }
+        if (p.x < -10) p.x = canvas.width + 10;
+        if (p.x > canvas.width + 10) p.x = -10;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,255,255,${p.o})`;
+        ctx.fill();
+      }
+      // Draw faint connections between nearby particles
+      for (let i = 0; i < particles.length; i++) {
+        for (let j = i + 1; j < particles.length; j++) {
+          const dx = particles[i].x - particles[j].x;
+          const dy = particles[i].y - particles[j].y;
+          const dist = dx * dx + dy * dy;
+          if (dist < 18000) {
+            ctx.beginPath();
+            ctx.moveTo(particles[i].x, particles[i].y);
+            ctx.lineTo(particles[j].x, particles[j].y);
+            ctx.strokeStyle = `rgba(255,255,255,${0.03 * (1 - dist / 18000)})`;
+            ctx.stroke();
+          }
+        }
+      }
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', resize); };
+  }, []);
 
   // Varied reveal system
   useEffect(() => {
@@ -142,6 +197,7 @@ export default function Landing({ onStart }) {
 
   return (
     <div className="landing">
+      <canvas ref={canvasRef} className="particle-canvas" />
       {/* ═══════ HERO ═══════ */}
       <section className="hero">
         <div className="hero-decor">
@@ -152,9 +208,7 @@ export default function Landing({ onStart }) {
           <div className="dots" />
         </div>
 
-        <div className="badge">
-          <span className="badge-inner">100% Free &middot; 100% Private &middot; 100% Yours</span>
-        </div>
+        <div className="badge">100% Free &middot; 100% Private &middot; 100% Yours</div>
 
         <h1>
           Stop <span className="strike">paying</span>
@@ -228,7 +282,6 @@ export default function Landing({ onStart }) {
           <div className="vs-divider reveal" data-reveal="scale">VS</div>
 
           <div className="roast-card us reveal" data-reveal="clip-left" data-delay="2">
-            <div className="card-border" />
             <div className="price">$0<span style={{ fontSize: '18px', color: 'var(--muted)' }}> forever</span></div>
             <div className="card-label">Ink Notes</div>
             <ul>
@@ -244,7 +297,7 @@ export default function Landing({ onStart }) {
       </section>
 
       {/* ═══════ STATS ═══════ */}
-      <section>
+      <section className="stats-section">
         <div className="stats" ref={statsRef}>
           <div className="stat reveal" data-reveal="scale">
             <div className={`stat-val green${statsVisible ? ' glitch' : ''}`}>

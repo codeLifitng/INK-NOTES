@@ -63,7 +63,16 @@
   background-size: 32px 32px;
 }
 
-.landing > * { position: relative; z-index: 1; }
+.particle-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  width: 100%;
+  height: 100%;
+}
+
+.landing > *:not(.particle-canvas) { position: relative; z-index: 1; }
 
 ::selection { background: var(--accent); color: #fff; }
 
@@ -285,14 +294,15 @@
   opacity: 0.3;
 }
 
-/* Badge with rotating gradient border */
+/* Badge */
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   padding: 8px 20px;
   border-radius: 100px;
-  background: var(--surface);
+  background: var(--surface2);
+  border: 1px solid rgba(52, 211, 153, 0.15);
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--green);
@@ -300,30 +310,12 @@
   text-transform: uppercase;
   margin-bottom: 32px;
   animation: fadeUp 0.8s ease both;
-  position: relative;
-  z-index: 1;
 }
 
 .badge::before {
-  content: '';
-  position: absolute;
-  inset: -1.5px;
-  border-radius: inherit;
-  background: conic-gradient(from var(--angle), var(--accent), var(--green), var(--gold), var(--accent));
-  z-index: -1;
-  animation: rotate-border 4s linear infinite;
-}
-
-.badge::after {
   content: '●';
-  position: absolute;
-  left: 12px;
-  animation: blink 1.5s infinite;
   font-size: 8px;
-}
-
-.badge-inner {
-  padding-left: 12px;
+  animation: blink 1.5s infinite;
 }
 
 /* Hero Headline */
@@ -531,7 +523,7 @@ section {
   grid-template-columns: 1fr auto 1fr;
   gap: 24px;
   max-width: 1000px;
-  margin: 60px auto 0;
+  margin: 40px auto 0;
   align-items: center;
 }
 
@@ -564,8 +556,8 @@ section {
   background: var(--surface);
   border: 1px solid rgba(255, 69, 69, 0.12);
   transform: rotate(-1deg);
-  filter: grayscale(0.2);
-  transition: transform 0.3s, filter 0.3s;
+  opacity: 0.7;
+  transition: transform 0.3s, opacity 0.3s;
 }
 
 .roast-card.them::before {
@@ -598,31 +590,23 @@ section {
   animation: glow-pulse 3s ease-in-out infinite;
 }
 
-/* "Us" card — glassmorphism + gradient border */
+/* "Us" card — glassmorphism */
 .roast-card.us {
   background: var(--surface-glass);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid transparent;
+  border: 1px solid rgba(79, 143, 255, 0.2);
   position: relative;
   z-index: 1;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 0 60px rgba(79,143,255,0.08);
-}
-
-.roast-card.us .card-border {
-  position: absolute;
-  inset: -1px;
-  border-radius: 21px;
-  background: conic-gradient(from var(--angle), var(--accent), var(--green), var(--gold), var(--accent));
-  z-index: -1;
-  animation: rotate-border 4s linear infinite;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 0 40px rgba(79,143,255,0.06);
 }
 
 .roast-card .price {
-  font-size: 48px;
+  font-size: 52px;
   font-weight: 900;
   letter-spacing: -2px;
   margin-bottom: 8px;
+  line-height: 1.1;
 }
 
 .roast-card.them .price {
@@ -634,7 +618,7 @@ section {
 
 .roast-card.us .price {
   color: var(--green);
-  text-shadow: 0 0 40px rgba(52,211,153,0.3);
+  text-shadow: 0 0 30px rgba(52,211,153,0.2);
 }
 
 .roast-card .card-label {
@@ -663,11 +647,16 @@ section {
 .roast-card.us ul li { color: var(--text); }
 
 /* ── Stats ── */
+.stats-section {
+  padding-top: clamp(20px, 4vw, 40px);
+  padding-bottom: clamp(20px, 4vw, 40px);
+}
+
 .stats {
   display: flex;
   justify-content: center;
   gap: clamp(30px, 6vw, 80px);
-  padding: 60px 0;
+  padding: 20px 0;
   flex-wrap: wrap;
 }
 
@@ -1053,4 +1042,5 @@ footer .footer-tagline {
   .landing::before { animation: none; }
   .marquee-track { animation: none; }
   .quotes-track { animation: none; }
+  .particle-canvas { display: none; }
 }
