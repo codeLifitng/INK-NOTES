@@ -1297,6 +1297,7 @@ footer .footer-tagline {
 .arch-storage-row {
   display: flex;
   justify-content: center;
+  margin-top: 18px;
 }
 .arch-db {
   border: 1.5px solid rgba(52, 211, 153, 0.25);
